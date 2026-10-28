@@ -1,0 +1,15 @@
+# Built plugins and libraries: they go into the GitHub Release zip, not git
+*.dll
+*.so
+*.pdb
+# The one third-party archive that is kept in git (server browser fix, StargateTC 2)
+*.zip
+!server-browser-fix/Server-browser-fix.zip
+
+# Generated at release time by tools/redial_splash.py (a modified copy of the mod's art)
+payload/materials/
+
+# Build and test output
+build-*/
+__pycache__/
+*.pyc

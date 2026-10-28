@@ -1,0 +1,36 @@
+Stargate TLS: Redial -- third-party components and credits
+============================================================
+
+1. Botrix (payload/addons/botrix.dll and linux/addons/botrix_i486.so, release zip only)
+   ------------------------------------------------------------------------------------
+   The bot plugin is Botrix by Boris Godin ("Borzh"), https://github.com/borzh/botrix,
+   at commit 54fa2fa (src/BASE_COMMIT.txt), with the Stargate: The Last Stand and
+   StargateTC 2 port in src/botrix_stargate.patch.
+
+   The Botrix repository states no license. Its code is published here, as a patch,
+   and built into the plugin, in good faith and with full credit to its author, so
+   that Stargate: The Last Stand players can use it. If you are the author and
+   object, please open an issue: it will be taken down.
+
+2. Source SDK (hl2sdk)
+   -------------------
+   The plugin is built against Valve's Source SDK headers and libraries, in the
+   AlliedModders hl2sdk repository (https://github.com/alliedmodders/hl2sdk, branches
+   "orangebox" and "episode1"), under the Source SDK license.
+
+3. Stargate: The Last Stand
+   ------------------------
+   payload/materials/console/background01.vtf and background01_widescreen.vtf
+   (release zip only) are the mod's menu backgrounds with a "REDIAL V1.0.0" stamp
+   added (tools/redial_splash.py). The screenshots in docs/images come from the
+   mod's ModDB page. Artwork (c) the Stargate: The Last Stand team. Nothing else
+   from the mod is included: you need your own copy.
+
+4. Waypoints and bot settings
+   --------------------------
+   The waypoints (payload/addons/botrix/waypoints) and settings were made for this
+   project.
+
+Half-Life 2 and Source are trademarks of Valve Corporation. Stargate SG-1 is a
+trademark of MGM. This project is not affiliated with Valve, MGM or the Stargate:
+The Last Stand team.

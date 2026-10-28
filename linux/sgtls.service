@@ -1,0 +1,22 @@
+# Example systemd unit: /etc/systemd/system/sgtls.service, then
+#   systemctl daemon-reload && systemctl enable --now sgtls
+# The console stays reachable with: sudo -u steam screen -r SGTLS   (Ctrl+A, D to leave it)
+# Restart=always restarts the screen if it dies; run-server.sh restarts srcds after a crash.
+[Unit]
+Description=Stargate: The Last Stand dedicated server (Stargate Redial)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=steam
+Environment=SRCDS_DIR=/home/steam/sgtls-server/orangebox PORT=27015 MAXPLAYERS=32 MAP=tls_abydos
+ExecStart=/usr/bin/screen -DmS SGTLS /home/steam/sgtls-server/run-server.sh
+Restart=always
+RestartSec=10
+# 10 bots fit in about 170 MB; more is a leak.
+MemoryMax=1G
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
