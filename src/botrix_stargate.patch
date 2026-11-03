@@ -855,10 +855,10 @@ index 69b83ea..5112b77 100644
                      CUtil::DrawText( vOrigin, pos++, 1.0f, 0xFF, 0xFF, 0xFF, szMainBuffer );
  
 diff --git a/mod.cpp b/mod.cpp
-index 041e319..0ec72b4 100644
+index 041e319..634dcb8 100644
 --- a/mod.cpp
 +++ b/mod.cpp
-@@ -11,6 +11,12 @@
+@@ -11,6 +11,13 @@
  #include "mods/borzh/mod_borzh.h"
  #include "mods/hl2dm/mod_hl2dm.h"
  #include "mods/tf2/mod_tf2.h"
@@ -867,11 +867,12 @@ index 041e319..0ec72b4 100644
 +#if defined(BOTRIX_SGTLS) || defined(BOTRIX_SGTC2)
 +#include "mods/sgtls/sgtls_map.h"
 +#include "mods/sgtls/sgtls_util.h"
++#include "mods/sgtls/objectives_sgtls.h"
 +#endif
  
  //----------------------------------------------------------------------------------------------------------------
  TModId CMod::m_iModId;
-@@ -40,6 +46,11 @@ bool CMod::bIntelligenceInBotName = true;
+@@ -40,6 +47,11 @@ bool CMod::bIntelligenceInBotName = true;
  bool CMod::bHeadShotDoesMoreDamage = true;
  bool CMod::bUseModels = true;
  
@@ -883,7 +884,7 @@ index 041e319..0ec72b4 100644
  float CMod::fSpawnProtectionTime = 0;
  int CMod::iSpawnProtectionHealth = 0;
  
-@@ -143,6 +154,39 @@ bool CMod::LoadDefaults( TModId iModId )
+@@ -143,6 +155,39 @@ bool CMod::LoadDefaults( TModId iModId )
          }
  #endif
  
@@ -923,7 +924,7 @@ index 041e319..0ec72b4 100644
  #ifdef BOTRIX_BORZH
          case EModId_Borzh:
              pCurrentMod = new CModBorzh();
-@@ -226,6 +270,19 @@ void CMod::MapLoaded()
+@@ -226,6 +271,19 @@ void CMod::MapLoaded()
          }
      }
  
@@ -943,7 +944,7 @@ index 041e319..0ec72b4 100644
      if ( pCurrentMod )
          pCurrentMod->MapLoaded();
  }
-@@ -253,7 +310,7 @@ bool CMod::IsNameTaken( const good::string& cName, TBotIntelligence iIntelligenc
+@@ -253,7 +311,7 @@ bool CMod::IsNameTaken( const good::string& cName, TBotIntelligence iIntelligenc
      {
          const CPlayer* pPlayer = CPlayers::Get(iPlayer);
          if ( pPlayer && good::starts_with( good::string(pPlayer->GetName()), cName ) &&
@@ -952,10 +953,14 @@ index 041e319..0ec72b4 100644
              return true;
      }
      return false;
-@@ -265,6 +322,24 @@ void CMod::Think()
+@@ -265,6 +323,28 @@ void CMod::Think()
      if ( pCurrentMod )
          pCurrentMod->Think();
  
++#ifdef BOTRIX_SGTLS
++    if ( CWaypoints::Size() > 0 )
++        sgtls::CObjectives::LogStage();
++#endif
 +#if defined(BOTRIX_SGTLS) || defined(BOTRIX_SGTC2)
 +    if ( fMapCfgTime > 0.0f && CBotrixPlugin::fTime >= fMapCfgTime )
 +    {
@@ -2992,10 +2997,10 @@ index 0000000..8ed1da1
 +#endif // __BOTRIX_STARGATES_SGTC2_H__
 diff --git a/mods/sgtls/bot_sgtls.cpp b/mods/sgtls/bot_sgtls.cpp
 new file mode 100644
-index 0000000..32f8245
+index 0000000..b652981
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.cpp
-@@ -0,0 +1,620 @@
+@@ -0,0 +1,720 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#include <stdio.h>
@@ -3170,6 +3175,9 @@ index 0000000..32f8245
 +    m_bHoldingButton = false;
 +    m_bSpawnOriginSet = m_bRegroupDone = false;
 +    m_fRegroupEnd = 0.0f;
++    m_iGuardWaypoint = EWaypointIdInvalid;
++    m_fGuardEnd = 0.0f;
++    m_fNextStepJump = 0.0f;
 +    m_fGlassAimTime = 0.0f;
 +    m_pSpot = NULL;
 +    m_iTeleporter = -1;
@@ -3207,6 +3215,10 @@ index 0000000..32f8245
 +        int i = ( iStart + k ) % 4;
 +        int iCount = CountPlayers( iTeam, iFirst + i, m_pEdict );
 +        if ( ( i == 3 && iCount > 0 ) || iFirst + i == iExclude )
++            continue;
++        // Kull Warriors (class 7) capped for bots (<prefix>_kullmax): their Kull blaster and energy armor won most
++        // fights (tls_erebus: the Goa'uld won all 192 rounds of the public server, 2026-10-28 to 11-03).
++        if ( iFirst + i == 7 && sgtls::iKullMax >= 0 && iCount >= sgtls::iKullMax )
 +            continue;
 +        float fDeficit = aClassChances[i] * iTeamSize / 100.0f - iCount;
 +        if ( fDeficit > fBestDeficit )
@@ -3268,6 +3280,23 @@ index 0000000..32f8245
 +                ConsoleCommand( "kill" );
 +                m_fNextKill = CBotrixPlugin::fTime + 15.0f;
 +            }
++        }
++        // A Kull Warrior over the cap (<prefix>_kullmax): the map's cfg runs 3 s after the level load, often after
++        // the bots chose their class. Another class from the next life, chosen while dead.
++        else if ( !m_bAlive && iClassId == 7 && sgtls::iKullMax >= 0 && CBotrixPlugin::fTime >= m_fNextJoinCommand &&
++                  CountPlayers( iTeam, 7, m_pEdict ) >= sgtls::iKullMax )
++        {
++            m_fNextJoinCommand = CBotrixPlugin::fTime + 2.0f;
++            m_iClassId = ChooseClass( iTeam, 7 );
++            m_iEquipCode = ChooseLoadout( m_iClassId );
++            m_iEquipClass = m_iClassId;
++            BLOG_I( "%s -> Kull Warriors over the cap (%d): class %d from the next life.", GetName(), sgtls::iKullMax,
++                    m_iClassId );
++            char szCmd[32];
++            sprintf( szCmd, "joinclass %d", m_iClassId );
++            ConsoleCommand( szCmd );
++            sprintf( szCmd, "setequipcode %d", m_iEquipCode );
++            ConsoleCommand( szCmd );
 +        }
 +        return false;
 +    }
@@ -3331,7 +3360,18 @@ index 0000000..32f8245
 +//----------------------------------------------------------------------------------------------------------------
 +TWaypointId CBot_SGTLS::GetRoamDestination()
 +{
++    // Arrived at its guard spot (a new destination is asked for on arrival): wait there first (Guard).
++    if ( CWaypoint::IsValid( m_iGuardWaypoint ) && m_fGuardEnd == 0.0f &&
++         m_vHead.DistToSqr( CWaypoints::Get( m_iGuardWaypoint ).vOrigin ) < 64.0f * 64.0f )
++        m_fGuardEnd = CBotrixPlugin::fTime + 8.0f + ( rand() % 8 );
 +    TWaypointId iDestination = sgtls::CObjectives::PickWaypoint( GetTeam(), m_pSpot );
++    if ( m_fGuardEnd == 0.0f )
++    {
++        Vector vButton;
++        m_iGuardWaypoint = ( CWaypoint::IsValid( iDestination ) &&
++                             sgtls::CObjectives::IsButtonToGuard( GetTeam(), m_pSpot, vButton ) )
++                         ? iDestination : EWaypointIdInvalid;
++    }
 +    if ( CWaypoint::IsValid( iDestination ) && iDestination != iCurrentWaypoint )
 +        return iDestination;
 +    return CBot_HL2DM::GetRoamDestination();
@@ -3469,9 +3509,12 @@ index 0000000..32f8245
 +    }
 +    if ( m_bAlive && !m_pCurrentEnemy && Regroup() )
 +        return;
++    if ( m_bAlive && !m_pCurrentEnemy && Guard() )
++        return;
 +    CBot_HL2DM::Think();
 +    // After the HL2DM think, which aims along the path: the window first.
 +    m_bBreakingGlass = m_bAlive && BreakGlass();
++    JumpAtStep();
 +}
 +
 +
@@ -3520,6 +3563,66 @@ index 0000000..32f8245
 +        return false;
 +    }
 +    m_bNeedMove = false;
++    return true;
++}
++
++
++//----------------------------------------------------------------------------------------------------------------
++void CBot_SGTLS::JumpAtStep()
++{
++    // Botrix jumps a fixed time after leaving the waypoint (the path's action time). On tls_lockdown's 40-46 unit
++    // steps the bots jumped too early or too late and failed the same paths again and again (415 -> 414: 67 times,
++    // 2026-11-03). Jump when at the step: the next waypoint (eye level) is more than a stair step higher and within
++    // 72 units. Once a second at most.
++    if ( !m_bAlive || !m_bNeedMove || !m_bUseNavigatorToMove || CBotrixPlugin::fTime < m_fNextStepJump ||
++         !CWaypoint::IsValid( iCurrentWaypoint ) || !CWaypoint::IsValid( iNextWaypoint ) || iCurrentWaypoint == iNextWaypoint )
++        return;
++    CWaypointPath* pPath = CWaypoints::GetPath( iCurrentWaypoint, iNextWaypoint );
++    if ( !pPath || !FLAG_SOME_SET( FPathJump, pPath->iFlags ) )
++        return;
++    const Vector& vNext = CWaypoints::Get( iNextWaypoint ).vOrigin;
++    if ( vNext.z - m_vHead.z <= 18.0f || ( vNext.AsVector2D() - m_vHead.AsVector2D() ).LengthSqr() > 72.0f * 72.0f )
++        return;
++    m_fNextStepJump = CBotrixPlugin::fTime + 1.0f;
++    m_bNeedJump = m_bNeedJumpDuck = true;
++    m_fStartActionTime = CBotrixPlugin::fTime;
++    m_fEndActionTime = CBotrixPlugin::fTime + 0.7f;
++}
++
++
++//----------------------------------------------------------------------------------------------------------------
++bool CBot_SGTLS::Guard()
++{
++    // tls_lockdown: the attackers hold a button 5-8 seconds. Defenders walked from guard spot to guard spot looking
++    // ahead, and saw the attacker at the button too late (the Tau'ri won every bots-only round, 2026-11-03). Now a
++    // defender that reached its guard spot stays 8-15 seconds watching the button. It still fights what comes.
++    if ( !CWaypoint::IsValid( m_iGuardWaypoint ) )
++        return false;
++    Vector vButton;
++    if ( !sgtls::CObjectives::IsButtonToGuard( GetTeam(), m_pSpot, vButton ) )
++    {
++        m_iGuardWaypoint = EWaypointIdInvalid; // Objective done, or the bot attacks now.
++        m_fGuardEnd = 0.0f;
++        return false;
++    }
++    if ( m_fGuardEnd == 0.0f )
++    {
++        if ( m_vHead.DistToSqr( CWaypoints::Get( m_iGuardWaypoint ).vOrigin ) > 48.0f * 48.0f )
++            return false; // Not there yet.
++        m_fGuardEnd = CBotrixPlugin::fTime + 8.0f + ( rand() % 8 );
++    }
++    if ( CBotrixPlugin::fTime >= m_fGuardEnd )
++    {
++        m_iGuardWaypoint = EWaypointIdInvalid;
++        m_fGuardEnd = 0.0f;
++        m_iCurrentTask = EBotTaskInvalid;
++        m_bNeedTaskCheck = true; // Next guard spot.
++        return false;
++    }
++    m_bNeedMove = false;
++    m_vLook = vButton;
++    m_bNeedAim = true;
++    m_fEndAimTime = CBotrixPlugin::fTime + 0.3f;
 +    return true;
 +}
 +
@@ -3613,15 +3716,17 @@ index 0000000..32f8245
 +    m_bLoadoutChecked = false;
 +    m_bSpawnOriginSet = m_bRegroupDone = false;
 +    m_fRegroupEnd = 0.0f;
++    m_iGuardWaypoint = EWaypointIdInvalid;
++    m_fGuardEnd = 0.0f;
 +}
 +
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/bot_sgtls.h b/mods/sgtls/bot_sgtls.h
 new file mode 100644
-index 0000000..751e183
+index 0000000..2643433
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.h
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,104 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#ifndef __BOTRIX_BOT_SGTLS_H__
@@ -3674,11 +3779,21 @@ index 0000000..751e183
 +    /// An attacker that came from far stops short of its spot until teammates join it. Return true while waiting.
 +    bool Regroup();
 +
++    /// A defender of a hold button that reached its guard spot waits there, watching the button. Return true while
++    /// waiting.
++    bool Guard();
++
++    /// On a path with the jump flag, jump (crouched) at the step: the next waypoint more than a step higher and close.
++    void JumpAtStep();
++
 +    bool m_bHoldingButton;         ///< Holding +use on an objective button.
 +    Vector m_vSpawnOrigin;         ///< Where the bot spawned (taken half a second after the spawn).
 +    bool m_bSpawnOriginSet;        ///< m_vSpawnOrigin is set for this life.
 +    bool m_bRegroupDone;           ///< Regrouped (or gave up) in this life.
 +    float m_fRegroupEnd;           ///< Time limit of the current wait, 0 = not waiting.
++    TWaypointId m_iGuardWaypoint;  ///< Guard spot the bot walks to (defender of a hold button), invalid = none.
++    float m_fGuardEnd;             ///< End of the wait at the guard spot, 0 = not there yet.
++    float m_fNextStepJump;         ///< No new jump at a step before this time.
 +    edict_t* m_pSpot;              ///< Objective spot the bot works on (sgtls::CObjectives::PickWaypoint).
 +    float m_fGlassAimTime;         ///< When the bot is aimed at the window it found, 0 = none.
 +    int m_iTeleporter;             ///< Teleporter the bot opens (sgtls::CObjectives::TeleporterOnPath), -1 = none.
@@ -4020,12 +4135,13 @@ index 0000000..00d76c7
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/objectives_sgtls.cpp b/mods/sgtls/objectives_sgtls.cpp
 new file mode 100644
-index 0000000..4a66799
+index 0000000..2814b42
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.cpp
-@@ -0,0 +1,456 @@
+@@ -0,0 +1,532 @@
 +#include <stdlib.h>
 +#include <string.h>
++#include <set>
 +#include <string>
 +#include <vector>
 +
@@ -4039,6 +4155,8 @@ index 0000000..4a66799
 +
 +#include "eiface.h"
 +#include "edict.h"
++#include "engine/IEngineTrace.h"
++#include "gametrace.h"
 +#include "iservernetworkable.h"
 +#include "iserverunknown.h"
 +#include "iserverentity.h"
@@ -4089,6 +4207,9 @@ index 0000000..4a66799
 +    }
 +
 +    const float fNearDistance = 1000.0f;
++    // Hold buttons: the defenders' guard spots, waypoints that see the button from this close (indoors, 1000 units
++    // took them to other rooms and floors: tls_lockdown's Tau'ri won every bots-only round, 2026-11-03).
++    const float fButtonGuardDistance = 700.0f;
 +    const float fButtonUseDistance = 90.0f; // From the eye to the button center: waypoints of the spot.
 +    // From the eye to the nearest point of the button: start walking to it and holding +use. The game takes +use
 +    // within 80 units (PLAYER_USE_RADIUS, horizontal distance); tls_lockdown's bomb buttons are long strips on a desk
@@ -4258,6 +4379,30 @@ index 0000000..4a66799
 +            else if ( v.DistToSqr( c.vCenter ) < fNearDistance * fNearDistance )
 +                c.aNear.push_back( w );
 +        }
++        if ( c.bButton )
++        {
++            // Guard spots: the waypoints near the button with a clear line (walls only) to its nearest point.
++            std::vector<TWaypointId> aGuard;
++            for ( TWaypointId w = 0; w < CWaypoints::Size(); ++w )
++            {
++                const Vector& v = CWaypoints::Get( w ).vOrigin;
++                if ( v.DistToSqr( c.vCenter ) > fButtonGuardDistance * fButtonGuardDistance ||
++                     v.DistToSqr( c.vCenter ) < fButtonUseDistance * fButtonUseDistance )
++                    continue;
++                Vector vTarget;
++                for ( int i = 0; i < 3; ++i )
++                    vTarget[i] = clamp( v[i], c.vMins[i], c.vMaxs[i] );
++                Ray_t ray;
++                ray.Init( v, vTarget );
++                trace_t tr;
++                CTraceFilterWorldOnly cFilter;
++                CBotrixPlugin::pEngineTrace->TraceRay( ray, MASK_PLAYERSOLID, &cFilter, &tr );
++                if ( tr.fraction >= 0.99f || tr.endpos.DistToSqr( vTarget ) < 24.0f * 24.0f )
++                    aGuard.push_back( w );
++            }
++            if ( aGuard.size() >= 3 )
++                c.aNear.swap( aGuard );
++        }
 +        if ( c.aInside.empty() )
 +        {
 +            // Smaller than the waypoint grid: use the nearest waypoint.
@@ -4393,10 +4538,11 @@ index 0000000..4a66799
 +    const CSpot& c = m_aSpots[iSpot];
 +    pSpot = c.pEdict;
 +
-+    // Attackers go into the area / to the button. Defenders stand in it half of the time (to block the capture)
-+    // and around it otherwise.
++    // Attackers go into the area / to the button. Defenders stand in an area half of the time (to block the
++    // capture) and around it otherwise; at a button, which they can't block, at a guard spot 3 times in 4.
 +    bool bAttacker = ( Attackers( c ) == iTeam );
-+    const std::vector<TWaypointId>& aChoice = ( bAttacker || c.aNear.empty() || ( rand() & 1 ) ) ? c.aInside : c.aNear;
++    bool bInside = bAttacker || c.aNear.empty() || ( c.bButton ? ( rand() % 4 ) == 0 : ( rand() & 1 ) != 0 );
++    const std::vector<TWaypointId>& aChoice = bInside ? c.aInside : c.aNear;
 +    if ( aChoice.empty() )
 +        return EWaypointIdInvalid;
 +    return aChoice[ rand() % aChoice.size() ];
@@ -4409,6 +4555,22 @@ index 0000000..4a66799
 +    for ( size_t a = 0; a < m_aSpots.size() && pSpot; ++a )
 +        if ( m_aSpots[a].pEdict == pSpot )
 +            return IsActive( m_aSpots[a] ) && Attackers( m_aSpots[a] ) == iTeam;
++    return false;
++}
++
++
++bool sgtls::CObjectives::IsButtonToGuard( TTeam iTeam, edict_t* pSpot, Vector& vButton )
++{
++    Refresh();
++    for ( size_t a = 0; a < m_aSpots.size() && pSpot; ++a )
++        if ( m_aSpots[a].pEdict == pSpot )
++        {
++            const CSpot& c = m_aSpots[a];
++            if ( !c.bButton || !IsActive( c ) || Attackers( c ) == iTeam )
++                return false;
++            vButton = c.vCenter;
++            return true;
++        }
 +    return false;
 +}
 +
@@ -4455,9 +4617,38 @@ index 0000000..4a66799
 +}
 +
 +
++void sgtls::CObjectives::LogStage()
++{
++    static float fNext = 0.0f;
++    static std::string sLast, sLastMap;
++    if ( CBotrixPlugin::fTime < fNext && CBotrixPlugin::fTime > fNext - 10.0f )
++        return;
++    fNext = CBotrixPlugin::fTime + 1.0f;
++    Refresh();
++    std::set<int> aOrders;
++    for ( size_t a = 0; a < m_aSpots.size(); ++a )
++        if ( m_aSpots[a].pObjective && IsActive( m_aSpots[a] ) )
++            aOrders.insert( Order( m_aSpots[a] ) );
++    std::string sNow;
++    for ( std::set<int>::const_iterator it = aOrders.begin(); it != aOrders.end(); ++it )
++    {
++        char sz[16];
++        snprintf( sz, sizeof( sz ), sNow.empty() ? "%d" : ",%d", *it );
++        sNow += sz;
++    }
++    const char* szMap = CBotrixPlugin::instance->sMapName.c_str();
++    if ( sNow == sLast && sLastMap == szMap )
++        return;
++    sLast = sNow;
++    sLastMap = szMap;
++    Msg( "[Botrix] %s: active objectives now: %s (t=%.0f).\n", szMap, sNow.empty() ? "none" : sNow.c_str(), CBotrixPlugin::fTime );
++}
++
++
 +void sgtls::CObjectives::Print()
 +{
 +    Refresh();
++    Msg( "game time %.1f s\n", CBotrixPlugin::fTime );
 +    for ( size_t a = 0; a < m_aSpots.size(); ++a )
 +    {
 +        const CSpot& c = m_aSpots[a];
@@ -4482,10 +4673,10 @@ index 0000000..4a66799
 +}
 diff --git a/mods/sgtls/objectives_sgtls.h b/mods/sgtls/objectives_sgtls.h
 new file mode 100644
-index 0000000..9a84eef
+index 0000000..ffce6e0
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.h
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,64 @@
 +#ifndef __BOTRIX_OBJECTIVES_SGTLS_H__
 +#define __BOTRIX_OBJECTIVES_SGTLS_H__
 +
@@ -4507,6 +4698,9 @@ index 0000000..9a84eef
 +        /// Rebuild the area list if the map or the waypoints changed. Cheap otherwise.
 +        static void Refresh();
 +
++        /// Log the orders of the active objectives when they change (how far the attackers got, balance tests).
++        static void LogStage();
++
 +        /// Waypoint where a bot of iTeam should go now (attack or defend an active area),
 +        /// EWaypointIdInvalid if the map has no active area. pSpot is the bot's spot, kept between calls: an
 +        /// attacker stays on it while it is active.
@@ -4514,6 +4708,10 @@ index 0000000..9a84eef
 +
 +        /// True if pSpot is an active spot that iTeam attacks.
 +        static bool IsAttacking( TTeam iTeam, edict_t* pSpot );
++
++        /// True if pSpot is the button of an active hold-button objective that iTeam defends. vButton receives its
++        /// center: what a defender at a guard spot watches.
++        static bool IsButtonToGuard( TTeam iTeam, edict_t* pSpot, Vector& vButton );
 +
 +        /// Distance from v to the spot (0 inside its box), a big number for an unknown spot.
 +        static float DistanceToSpot( edict_t* pSpot, const Vector& v );
@@ -6119,10 +6317,10 @@ index 0000000..263c4ca
 +#endif // __BOTRIX_SGTLS_MAP_H__
 diff --git a/mods/sgtls/sgtls_util.cpp b/mods/sgtls/sgtls_util.cpp
 new file mode 100644
-index 0000000..d3135db
+index 0000000..36a934e
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.cpp
-@@ -0,0 +1,1103 @@
+@@ -0,0 +1,1271 @@
 +#include <string.h>
 +#include <map>
 +#include <string>
@@ -6512,12 +6710,92 @@ index 0000000..d3135db
 +        {
 +            Vector v = a + ( b - a ) * ( (float)i / iSteps );
 +            v.z += 32.0f;
-+            CUtil::GetGroundVec( v );
++            Vector vGround = CUtil::GetGroundVec( v ); // GetGroundVec returns the trace end, v is unchanged.
 +            const trace_t& tr = CUtil::TraceResult();
-+            Msg( "  %2d ground %.0f normal z %.2f (%.0f deg)%s%s\n", i, v.z, tr.plane.normal.z,
++            Msg( "  %2d ground %.0f normal z %.2f (%.0f deg)%s%s\n", i, vGround.z, tr.plane.normal.z,
 +                 acosf( clamp( tr.plane.normal.z, -1.0f, 1.0f ) ) * 57.2958f, tr.startsolid ? " startsolid" : "",
 +                 ( tr.dispFlags & DISPSURF_FLAG_SURFACE ) ? " disp" : "" );
 +        }
++    }
++
++    // sgtls_slopescan <xmin> <ymin> <xmax> <ymax> [degrees [hull|line [steep rise]]]: the paths starting in the box that a walking player can't
++    // climb. Ground every 8 units along the path (traced down from 32 units above the path, as sgtls_slope). A path is
++    // listed when the ground rises by more than a step (18 units) over consecutive samples steeper than the limit
++    // (46 by default: Source players slide on ground steeper than 45.6 degrees, normal z < 0.7), or rises by more than
++    // a step between two samples without the path's jump flag (a ledge). One line per path:
++    // "from to climb steepest steep-rise ledge flags rise-on-displacement ledge-on-displacement" (steep-rise: the
++    // longest rise over consecutive steep samples; the last two: 1 when that rise / ledge is on terrain).
++    void SlopeScanCommand( const CCommand& args )
++    {
++        if ( args.ArgC() < 5 )
++            return;
++        float x0 = atof( args.Arg( 1 ) ), y0 = atof( args.Arg( 2 ) ), x1 = atof( args.Arg( 3 ) ), y1 = atof( args.Arg( 4 ) );
++        float fLimit = ( args.ArgC() > 5 ) ? atof( args.Arg( 5 ) ) : 46.0f;
++        bool bHull = ( args.ArgC() <= 6 ) || strcmp( args.Arg( 6 ), "line" ) != 0;
++        // The steep rise listed: 18 (a step) by default. The game refuses a step that lands on steep ground
++        // (StepMove), so shorter steep parts can block too: a lower value lists them.
++        float fSteepRise = ( args.ArgC() > 7 ) ? atof( args.Arg( 7 ) ) : 18.0f;
++        const float fStep = 18.0f;
++        int iPaths = 0, iListed = 0;
++        for ( TWaypointId w = 0; w < CWaypoints::Size(); ++w )
++        {
++            const Vector& a = CWaypoints::Get( w ).vOrigin;
++            if ( a.x < x0 || a.x > x1 || a.y < y0 || a.y > y1 )
++                continue;
++            CWaypoints::WaypointNode& cNode = CWaypoints::GetNode( w );
++            for ( CWaypoints::WaypointArcIt it = cNode.neighbours.begin(); it != cNode.neighbours.end(); ++it )
++            {
++                const Vector& b = CWaypoints::Get( it->target ).vOrigin;
++                ++iPaths;
++                int iSteps = (int)( ( b - a ).Length2D() / 8.0f ) + 1;
++                float fPrev = 0.0f, fMax = 0.0f, fRise = 0.0f, fRun = 0.0f, fLedge = 0.0f;
++                bool bRunDisp = false, bRiseDisp = false, bLedgeDisp = false;
++                for ( int i = 0; i <= iSteps; ++i )
++                {
++                    Vector v = a + ( b - a ) * ( (float)i / iSteps );
++                    v.z += 32.0f;
++                    // The player's hull, as the game's movement finds the ground (CategorizePosition: a hull trace,
++                    // ground if the normal z >= 0.7): small steep bumps under a wide hull don't count.
++                    float fGround = bHull ? CUtil::GetHullGroundVec( v ).z : CUtil::GetGroundVec( v ).z;
++                    const trace_t& tr = CUtil::TraceResult();
++                    float fDeg = acosf( clamp( tr.plane.normal.z, -1.0f, 1.0f ) ) * 57.2958f;
++                    bool bDisp = ( tr.dispFlags & DISPSURF_FLAG_SURFACE ) != 0;
++                    float fUp = fGround - fPrev;
++                    if ( i > 0 && fUp > 0.5f && fDeg > fLimit )
++                    {
++                        fRun += fUp;
++                        bRunDisp |= bDisp;
++                        if ( fRun > fRise )
++                        {
++                            fRise = fRun;
++                            bRiseDisp = bRunDisp;
++                        }
++                        if ( fDeg > fMax )
++                            fMax = fDeg;
++                    }
++                    else
++                    {
++                        fRun = 0.0f;
++                        bRunDisp = false;
++                        if ( i > 0 && fUp > fLedge )
++                        {
++                            fLedge = fUp;
++                            bLedgeDisp = bDisp;
++                        }
++                    }
++                    fPrev = fGround;
++                }
++                bool bJump = FLAG_SOME_SET( FPathJump, it->edge.iFlags );
++                if ( fRise > fSteepRise || ( !bJump && fLedge > fStep ) )
++                {
++                    ++iListed;
++                    Msg( "%d %d %.0f %.0f %.0f %.0f %d %d %d\n", w, it->target, b.z - a.z, fMax, fRise, fLedge,
++                         (int)it->edge.iFlags, bRiseDisp ? 1 : 0, bLedgeDisp ? 1 : 0 );
++                }
++            }
++        }
++        Msg( "%d paths from the box, %d can't be walked up (steeper than %.0f degrees or a ledge).\n", iPaths,
++             iListed, fLimit );
 +    }
 +
 +    void ReachCommand( const CCommand& args )
@@ -6662,6 +6940,72 @@ index 0000000..d3135db
 +        if ( args.ArgC() > 1 )
 +            sgtls::bRegroup = atoi( args.Arg( 1 ) ) != 0;
 +        Msg( "Attackers regroup: %d\n", sgtls::bRegroup );
++    }
++
++    // <prefix>_kullmax [n] : most Kull Warriors in a team that bots make (-1 = no limit). Bots already Kull keep it.
++    // For the current map: back to no limit at the next map (cfg/botrix_<map>.cfg; server.cfg runs at every map).
++    void KullMaxCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::iKullMax = atoi( args.Arg( 1 ) );
++        Msg( "Kull Warriors per team, for bots: %d%s\n", sgtls::iKullMax, sgtls::iKullMax < 0 ? " (no limit)" : "" );
++    }
++
++    // Bot weapon settings of config.ini changed for the current map only, by weapon id: the values to put back.
++    struct CSavedWeapon
++    {
++        float fShotTime, fMinDistanceSqr, fMaxDistanceSqr;
++    };
++    std::map<int, CSavedWeapon> aSavedWeapons;
++
++    // <prefix>_mapweapon <weapon> [delay <ms>] [range <min> <max>] : the bots' use of a weapon (primary fire) on this
++    // map only, from cfg/botrix_<map>.cfg; config.ini's values come back at the next map. Without arguments: what is
++    // changed. The weapon itself doesn't change, for players.
++    void MapWeaponCommand( const CCommand& args )
++    {
++        if ( args.ArgC() < 2 )
++        {
++            for ( std::map<int, CSavedWeapon>::const_iterator it = aSavedWeapons.begin(); it != aSavedWeapons.end(); ++it )
++            {
++                const CWeapon* w = CWeapons::Get( it->first )->GetBaseWeapon();
++                Msg( "%s: delay %.0f ms, range %.0f %.0f (config.ini: %.0f ms, %.0f %.0f)\n", w->pWeaponClass->sClassName.c_str(),
++                     w->fShotTime[0] * 1000.0f, sqrtf( w->fMinDistanceSqr[0] ), sqrtf( w->fMaxDistanceSqr[0] ),
++                     it->second.fShotTime * 1000.0f, sqrtf( it->second.fMinDistanceSqr ), sqrtf( it->second.fMaxDistanceSqr ) );
++            }
++            return;
++        }
++        TWeaponId iId = CWeapons::GetIdFromWeaponName( args.Arg( 1 ) );
++        if ( !CWeapons::IsValid( iId ) )
++        {
++            Msg( "Unknown weapon: %s\n", args.Arg( 1 ) );
++            return;
++        }
++        CWeapon* w = const_cast<CWeapon*>( CWeapons::Get( iId )->GetBaseWeapon() );
++        CSavedWeapon cOld = { w->fShotTime[0], w->fMinDistanceSqr[0], w->fMaxDistanceSqr[0] };
++        for ( int i = 2; i < args.ArgC(); )
++        {
++            if ( strcmp( args.Arg( i ), "delay" ) == 0 && i + 1 < args.ArgC() )
++            {
++                w->fShotTime[0] = atoi( args.Arg( i + 1 ) ) / 1000.0f;
++                i += 2;
++            }
++            else if ( strcmp( args.Arg( i ), "range" ) == 0 && i + 2 < args.ArgC() )
++            {
++                int iMax = atoi( args.Arg( i + 2 ) );
++                w->fMinDistanceSqr[0] = SQR( (float)atoi( args.Arg( i + 1 ) ) );
++                w->fMaxDistanceSqr[0] = iMax ? SQR( (float)iMax ) : (float)CUtil::iMaxMapSizeSqr;
++                i += 3;
++            }
++            else
++            {
++                Msg( "Usage: <weapon> [delay <ms>] [range <min> <max>]\n" );
++                return;
++            }
++        }
++        if ( !aSavedWeapons.count( iId ) )
++            aSavedWeapons[iId] = cOld;
++        Msg( "%s on this map: delay %.0f ms, range %.0f %.0f\n", args.Arg( 1 ), w->fShotTime[0] * 1000.0f,
++             sqrtf( w->fMinDistanceSqr[0] ), sqrtf( w->fMaxDistanceSqr[0] ) );
 +    }
 +
 +    // <prefix>_tp <entindex> <waypoint> : put a bot on a waypoint, to test the way from there (tls_erebus's temple).
@@ -6933,6 +7277,22 @@ index 0000000..d3135db
 +float sgtls::fRecoilControl = 1.0f;
 +bool sgtls::bKeepDistance = true;
 +bool sgtls::bRegroup = true;
++int sgtls::iKullMax = -1;
++
++void sgtls::RestoreMapSettings()
++{
++    iKullMax = -1;
++    for ( std::map<int, CSavedWeapon>::const_iterator it = aSavedWeapons.begin(); it != aSavedWeapons.end(); ++it )
++    {
++        if ( !CWeapons::IsValid( it->first ) )
++            continue;
++        CWeapon* w = const_cast<CWeapon*>( CWeapons::Get( it->first )->GetBaseWeapon() );
++        w->fShotTime[0] = it->second.fShotTime;
++        w->fMinDistanceSqr[0] = it->second.fMinDistanceSqr;
++        w->fMaxDistanceSqr[0] = it->second.fMaxDistanceSqr;
++    }
++    aSavedWeapons.clear();
++}
 +
 +QAngle sgtls::PunchAngle( edict_t* pEdict )
 +{
@@ -7154,6 +7514,7 @@ index 0000000..d3135db
 +    SGTLS_DECLARE_NOARGS( ObjectivesCommand )
 +    SGTLS_DECLARE_NOARGS( ReachCommand )
 +    SGTLS_DECLARE_NOARGS( SlopeCommand )
++    SGTLS_DECLARE_NOARGS( SlopeScanCommand )
 +    SGTLS_DECLARE_NOARGS( RegroupCommand )
 +    SGTLS_DECLARE_NOARGS( VisAuditCommand )
 +
@@ -7170,13 +7531,18 @@ index 0000000..d3135db
 +    ConCommand cObjectives( SGTLS_PREFIX "_objectives", SGTLS_COMMAND_CALLBACK( ObjectivesCommand ), "objectives and their state." );
 +    ConCommand cRegroup( SGTLS_PREFIX "_regroup", SGTLS_COMMAND_CALLBACK( RegroupCommand ), "[0|1]: attackers that spawned far wait for teammates." );
 +    ConCommand cSlope( SGTLS_PREFIX "_slope", SGTLS_COMMAND_CALLBACK( SlopeCommand ), "<waypoint> <waypoint>: the ground along a path." );
++    ConCommand cSlopeScan( SGTLS_PREFIX "_slopescan", SGTLS_COMMAND_CALLBACK( SlopeScanCommand ), "<xmin> <ymin> <xmax> <ymax> [degrees [hull|line [steep rise]]]: paths a walking player can't climb." );
 +    ConCommand cReach( SGTLS_PREFIX "_reach", SGTLS_COMMAND_CALLBACK( ReachCommand ), "x y z x y z: Botrix reachability between two eye positions." );
 +    ConCommand cVisAudit( SGTLS_PREFIX "_visaudit", SGTLS_COMMAND_CALLBACK( VisAuditCommand ), "[1|0] | fix <1|0>: count bot shots at hidden enemies / toggle the bot vision fixes." );
 +#ifdef BOTRIX_SGTLS
 +    ConCommand cEquipIds( SGTLS_PREFIX "_equipids", SGTLS_COMMAND_CALLBACK( EquipIdsCommand ), "equipment ids for setequipcode." );
 +    SGTLS_DECLARE_NOARGS( MemCommand )
 +    ConCommand cMem( SGTLS_PREFIX "_mem", SGTLS_COMMAND_CALLBACK( MemCommand ), "<entindex> <hex offset> [dwords]: dump entity memory." );
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cRegroup, &cVisAudit, &cMem };
++    SGTLS_DECLARE_NOARGS( KullMaxCommand )
++    ConCommand cKullMax( SGTLS_PREFIX "_kullmax", SGTLS_COMMAND_CALLBACK( KullMaxCommand ), "[n]: most Kull Warriors per team that bots make, on this map (-1 = no limit)." );
++    SGTLS_DECLARE_NOARGS( MapWeaponCommand )
++    ConCommand cMapWeapon( SGTLS_PREFIX "_mapweapon", SGTLS_COMMAND_CALLBACK( MapWeaponCommand ), "<weapon> [delay <ms>] [range <min> <max>]: bots' use of a weapon on this map only." );
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cMem, &cKullMax, &cMapWeapon };
 +#elif defined(BOTRIX_SGTC2)
 +    SGTLS_DECLARE_NOARGS( UseCommand )
 +    SGTLS_DECLARE_NOARGS( MemCommand )
@@ -7184,9 +7550,9 @@ index 0000000..d3135db
 +    ConCommand cMem( SGTLS_PREFIX "_mem", SGTLS_COMMAND_CALLBACK( MemCommand ), "<entindex> <hex offset> [dwords]: dump entity memory." );
 +    SGTLS_DECLARE_NOARGS( SkillBonusCommand )
 +    ConCommand cSkill( SGTLS_PREFIX "_tauri_skill_bonus", SGTLS_COMMAND_CALLBACK( SkillBonusCommand ), "[n]: Tau'ri bots joining from now on get n intelligence levels more (0 = off)." );
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cRegroup, &cVisAudit, &cUse, &cMem, &cSkill };
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cUse, &cMem, &cSkill };
 +#else
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cRegroup, &cVisAudit };
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit };
 +#endif
 +}
 +
@@ -7228,10 +7594,10 @@ index 0000000..d3135db
 +}
 diff --git a/mods/sgtls/sgtls_util.h b/mods/sgtls/sgtls_util.h
 new file mode 100644
-index 0000000..cb1c349
+index 0000000..cb7b145
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.h
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,94 @@
 +#ifndef __BOTRIX_SGTLS_UTIL_H__
 +#define __BOTRIX_SGTLS_UTIL_H__
 +
@@ -7307,6 +7673,12 @@ index 0000000..cb1c349
 +    extern bool bKeepDistance;
 +    /// SGTLS: attackers that spawned far wait for teammates before attacking (CBot_SGTLS::Regroup).
 +    extern bool bRegroup;
++    /// SGTLS: a bot doesn't take the Kull Warrior class when its team already has this many Kull (humans
++    /// included; <prefix>_kullmax, -1 = no limit, for the current map). Humans choose freely.
++    extern int iKullMax;
++
++    /// Put back the bot settings changed for the map (<prefix>_mapweapon, <prefix>_kullmax). Called at level shutdown.
++    void RestoreMapSettings();
 +
 +    /// View punch (recoil) of a player, which the game adds to its shots. Zero if unknown.
 +    QAngle PunchAngle( edict_t* pEdict );
@@ -7392,7 +7764,7 @@ index fc30357..c30664f 100644
      good::string m_sName;            // Lowercased name of player.
      Vector m_vHead;                  // Head position of player.
 diff --git a/server_plugin.cpp b/server_plugin.cpp
-index 1f4ed2e..e739400 100644
+index 1f4ed2e..327eb99 100644
 --- a/server_plugin.cpp
 +++ b/server_plugin.cpp
 @@ -26,7 +26,11 @@
@@ -7466,6 +7838,41 @@ index 1f4ed2e..e739400 100644
      CConfiguration::Unload();
      CBotrixCommand::instance.reset();
      CMod::UnLoad();
+@@ -443,6 +464,24 @@ void CBotrixPlugin::GameFrame( bool /*simulating*/ )
+         fEngineTime = pEngineServer->Time();
+ 
+         float fDiff = fEngineTime - fPrevEngineTime;
++#if defined(BOTRIX_SGTLS) || defined(BOTRIX_SGTC2)
++        // The bots' clock follows the game clock (a bot moves one tick per command), not the wall clock. On a busy
++        // host the server waits for a CPU and runs its ticks late and in bursts: the wall clock ran ahead of the bots'
++        // moves, so they took their paths for unreachable, wandered and suicided (the public VPS: servers waiting
++        // 15-18 % of the time for a CPU, 20-50 times more stuck bots than the test VM, 2026-11-03). A map change
++        // restarts curtime: one tick then.
++        static float fPrevCurTime = -1.0f;
++        CGlobalVars* pGlobals = pPlayerInfoManager ? pPlayerInfoManager->GetGlobalVars() : NULL;
++        if ( pGlobals )
++        {
++            float fStep = pGlobals->curtime - fPrevCurTime;
++            if ( fPrevCurTime < 0.0f || fStep < 0.0f || fStep > 1.0f )
++                fStep = pGlobals->interval_per_tick;
++            fPrevCurTime = pGlobals->curtime;
++            fTime += fStep;
++        }
++        else
++#endif
+ #if defined(_DEBUG) || defined(DEBUG)
+         if ( fDiff > 1.0f ) // Too low fps, possibly debugging.
+             fTime += 0.1f;
+@@ -539,6 +578,9 @@ void CBotrixPlugin::LevelShutdown( void )
+     // This function gets called multiple times per map change.
+     bMapRunning = false;
+     sMapName = "";
++#if defined(BOTRIX_SGTLS) || defined(BOTRIX_SGTC2)
++    sgtls::RestoreMapSettings(); // <prefix>_mapweapon / _kullmax settings are for one map
++#endif
+ 
+     if ( CWaypoints::IsAnalyzing() )
+         CWaypoints::StopAnalyzing(); // Don't save if currently analyzing.
 diff --git a/server_plugin.h b/server_plugin.h
 index e44fbb2..8e04e05 100644
 --- a/server_plugin.h

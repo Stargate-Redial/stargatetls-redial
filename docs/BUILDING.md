@@ -52,7 +52,7 @@ The plugin goes to `<mod>/addons/botrix_i486.so` (the engine adds `_i486.so` to 
 `tools/redial_splash.py` stamps "REDIAL V<version>" on the mods' menu backgrounds (`materials/console/background01*.vtf`). It needs Pillow and the Perpetua Titling fonts of Windows:
 
 ```
-py tools\redial_splash.py "<Steam>\steamapps\sourcemods" out 1.0.0
+py tools\redial_splash.py "<Steam>\steamapps\sourcemods" out 1.0.1
 ```
 
 It reads the original textures of each installed mod (not already stamped ones) and writes the stamped ones to `out\<mod>\materials\console`, plus previews. The release zip carries them in `payload\materials\console`.

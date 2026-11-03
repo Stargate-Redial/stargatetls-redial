@@ -21,7 +21,8 @@
 | `addons\botrix.vdf` | tells the engine to load `addons\botrix` |
 | `addons\botrix\config.ini` | bot settings: weapons, classes, equipment, skills |
 | `addons\botrix\waypoints\*.way` | the paths of the 3 maps |
-| `materials\console\background01.vtf`, `background01_widescreen.vtf` | the menu backgrounds with "REDIAL V1.0.0" (release zip only; not with `-NoSplash`) |
+| `cfg\botrix_tls_abydos.cfg`, `botrix_tls_erebus.cfg`, `botrix_tls_lockdown.cfg` | bot settings for one map, run by the plugin once that map is loaded (back to the defaults at the next map) |
+| `materials\console\background01.vtf`, `background01_widescreen.vtf` | the menu backgrounds with "REDIAL V1.0.1" (release zip only; not with `-NoSplash`) |
 
 A file that already exists and differs is first copied to `sgtls\redial-backup\` (same relative path). `redial-backup\installed.txt` lists every file installed: `A` added, `R` replaced, `C` cfg created.
 
@@ -61,5 +62,7 @@ To check the bots loaded: `plugin_print` in the console lists Botrix.
 | `botrix bot kick all` | remove every bot |
 | `botrix bot` | all bot commands |
 | `sgtls_objectives` | what the bots know about the map: objectives, buttons, teleporters |
+| `sgtls_kullmax N` | at most N Kull Warriors per team among the bots, on this map (-1 = no limit); humans choose freely |
+| `sgtls_mapweapon <weapon> [delay <ms>] [range <min> <max>]` | how the bots use a weapon, on this map (the weapon itself doesn't change) |
 
 Botrix writes its log to `addons\botrix\botrix.log`.
