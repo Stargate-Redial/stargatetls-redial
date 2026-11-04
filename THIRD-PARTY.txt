@@ -21,7 +21,7 @@ Stargate TLS: Redial -- third-party components and credits
 3. Stargate: The Last Stand
    ------------------------
    payload/materials/console/background01.vtf and background01_widescreen.vtf
-   (release zip only) are the mod's menu backgrounds with a "REDIAL V1.0.1" stamp
+   (release zip only) are the mod's menu backgrounds with a "REDIAL V1.0.2" stamp
    added (tools/redial_splash.py). The screenshots in docs/images come from the
    mod's ModDB page. Artwork (c) the Stargate: The Last Stand team. Nothing else
    from the mod is included: you need your own copy.

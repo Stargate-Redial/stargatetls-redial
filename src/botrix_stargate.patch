@@ -553,10 +553,29 @@ index 5dbd2d1..fabcbff 100644
                      }
                  }
 diff --git a/bot.h b/bot.h
-index 81c7c55..6082705 100644
+index 81c7c55..a1c0458 100644
 --- a/bot.h
 +++ b/bot.h
-@@ -166,8 +166,9 @@ public: // Methods.
+@@ -65,6 +65,18 @@ public: // Methods.
+     /// Return true if @p iPlayer is ally for bot.
+     bool IsAlly( TPlayerIndex iPlayer ) { return m_aAllies.test(iPlayer); }
+ 
++    /// The enemy the bot fights now, or NULL.
++    CPlayer* GetCurrentEnemy() const { return m_pCurrentEnemy; }
++
++    /// Tests (capture diagnostics): would the bot take this player as an enemy, does its visibility trace reach it,
++    /// and is it also in its view cone.
++    void DiagSight( CPlayer* pPlayer, bool& bEnemy, bool& bVisible, bool& bInCone ) const
++    {
++        bEnemy = IsEnemy( pPlayer );
++        bVisible = IsVisible( pPlayer, false );
++        bInCone = bVisible && IsVisible( pPlayer, true );
++    }
++
+     /// Return true if bot is paused.
+     bool IsAttacking() { return m_bCommandAttack; }
+ 
+@@ -166,8 +178,9 @@ public: // Methods.
      virtual void EndPerformingChatRequest( bool bSayGoodbye );
  #endif
  
@@ -568,7 +587,7 @@ index 81c7c55..6082705 100644
      virtual void PreThink();
  
  
-@@ -202,6 +203,12 @@ protected: // Mod dependend protected functions.
+@@ -202,6 +215,12 @@ protected: // Mod dependend protected functions.
      {
          int team = pPlayer->GetTeam();
  		int index = pPlayer->GetIndex();
@@ -581,7 +600,7 @@ index 81c7c55..6082705 100644
  		return ( !pPlayer->IsProtected() ) &&
  		       ( CMod::iSpawnProtectionHealth == 0 || pPlayer->GetHealth() < CMod::iSpawnProtectionHealth ) &&
  			   ( team != CMod::iSpectatorTeam ) &&
-@@ -218,6 +225,9 @@ protected: // Mod dependend protected functions.
+@@ -218,6 +237,9 @@ protected: // Mod dependend protected functions.
      // Bot just picked up given item.
      virtual void PickItem( const CItem& cItem, TItemType iEntityType, TItemIndex iIndex );
  
@@ -591,7 +610,7 @@ index 81c7c55..6082705 100644
  
  protected: // Methods.
      /// Say something in chat.
-@@ -258,6 +268,11 @@ protected: // Methods.
+@@ -258,6 +280,11 @@ protected: // Methods.
      // Update nearest objects, players, items and weapons.
      void UpdateWorld();
  
@@ -603,7 +622,7 @@ index 81c7c55..6082705 100644
      inline void CurrentEnemyNotVisible()
      {
          m_bEnemyAim = m_bEnemyOffSight = m_bAttackDuck = false;
-@@ -305,6 +320,15 @@ protected: // Methods.
+@@ -305,6 +332,15 @@ protected: // Methods.
      // Shoot current weapon.
      void WeaponShoot( int iSecondary = CWeapon::PRIMARY );
  
@@ -619,7 +638,7 @@ index 81c7c55..6082705 100644
      // Toggle zoom.
      void WeaponToggleZoom()
      {
-@@ -405,6 +429,17 @@ protected: // Members.
+@@ -405,6 +441,17 @@ protected: // Members.
  
      float m_fNextDrawNearObjectsTime;                              // Next time to draw near objects.
      float m_fInvalidWaypointEnd;                                   // Time when suicide because far away from waypoints.
@@ -637,7 +656,7 @@ index 81c7c55..6082705 100644
  
      good::pair<int, int> m_cAttackDuckRangeSqr;                    // Will duck if attacking & m_bFeatureAttackDuckEnabled & in range.
  
-@@ -481,6 +516,7 @@ protected: // Bot flags.
+@@ -481,6 +528,7 @@ protected: // Bot flags.
      bool m_bNeedJumpDuck:1;                                        // Will start ducking at m_fStartActionTime and hold duck until m_fEndActionTime.
  
      bool m_bDontBreakObjects:1;                                    // Set to true to not to break nearby objects.
@@ -692,20 +711,23 @@ index a0ca9a2..9dc995f 100644
  
  	aBoolsCompletion.clear();
 diff --git a/event.cpp b/event.cpp
-index 3bc4426..21b2aff 100644
+index 3bc4426..e1a8c25 100644
 --- a/event.cpp
 +++ b/event.cpp
-@@ -7,6 +7,9 @@
+@@ -7,6 +7,12 @@
  #ifdef BOTRIX_TF2
      #include "mods/tf2/bot_tf2.h"
  #endif
 +#if defined(BOTRIX_SGTC2) || defined(BOTRIX_SGTLS)
 +    #include "mods/sgtls/sgtls_util.h"
 +#endif
++#ifdef BOTRIX_SGTLS
++    #include "mods/sgtls/objectives_sgtls.h"
++#endif
  
  // memdbgon must be the last include file in a .cpp file!!!
  #include "tier0/memdbgon.h"
-@@ -75,6 +78,12 @@ void CPlayerHurtEvent::FireGameEvent( IGameEvent* pEvent )
+@@ -75,6 +81,12 @@ void CPlayerHurtEvent::FireGameEvent( IGameEvent* pEvent )
  
      CPlayer *pPlayer = CPlayers::Get(iActivator);
      CPlayer *pPlayerAttacker = iAttacker >= 0 ? CPlayers::Get(iAttacker) : NULL;
@@ -718,7 +740,7 @@ index 3bc4426..21b2aff 100644
  	if (pPlayer && pPlayerAttacker && pPlayer->IsBot())
          ((CBot*)pPlayer)->HurtBy( iAttacker, pPlayerAttacker, pEvent->GetInt("health") );
  }
-@@ -93,6 +102,20 @@ void CPlayerDeathEvent::FireGameEvent( IGameEvent* pEvent )
+@@ -93,6 +105,20 @@ void CPlayerDeathEvent::FireGameEvent( IGameEvent* pEvent )
      if ( pPlayerActivator )
          pPlayerActivator->Dead();
  
@@ -739,7 +761,7 @@ index 3bc4426..21b2aff 100644
      if ( pAttacker )
      {
          int iAttacker = CPlayers::GetIndex(pAttacker);
-@@ -105,6 +128,31 @@ void CPlayerDeathEvent::FireGameEvent( IGameEvent* pEvent )
+@@ -105,6 +131,35 @@ void CPlayerDeathEvent::FireGameEvent( IGameEvent* pEvent )
  }
  
  
@@ -763,6 +785,10 @@ index 3bc4426..21b2aff 100644
 +        int iIndex = pEdict ? CPlayers::GetIndex( pEdict ) : -1;
 +        CPlayer* pPlayer = iIndex >= 0 ? CPlayers::Get( iIndex ) : NULL;
 +        BLOG_I( "%s: %s by %s (team %d).", szMap, szName, pPlayer ? pPlayer->GetName() : "?", pPlayer ? pPlayer->GetTeam() : -1 );
++        if ( pPlayer && strcmp( szName, "capture_start" ) == 0 )
++            sgtls::CObjectives::NoteCapture( pPlayer->GetHead() );
++        if ( pPlayer && sgtls::bCaptureDiag )
++            sgtls::LogCapture( pPlayer, szName );
 +    }
 +}
 +#endif
@@ -2997,10 +3023,10 @@ index 0000000..8ed1da1
 +#endif // __BOTRIX_STARGATES_SGTC2_H__
 diff --git a/mods/sgtls/bot_sgtls.cpp b/mods/sgtls/bot_sgtls.cpp
 new file mode 100644
-index 0000000..b652981
+index 0000000..fd1e235
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.cpp
-@@ -0,0 +1,720 @@
+@@ -0,0 +1,740 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#include <stdio.h>
@@ -3180,6 +3206,7 @@ index 0000000..b652981
 +    m_fNextStepJump = 0.0f;
 +    m_fGlassAimTime = 0.0f;
 +    m_pSpot = NULL;
++    m_iStageSeen = -1;
 +    m_iTeleporter = -1;
 +    m_fTeleporterStart = 0.0f;
 +}
@@ -3363,14 +3390,17 @@ index 0000000..b652981
 +    // Arrived at its guard spot (a new destination is asked for on arrival): wait there first (Guard).
 +    if ( CWaypoint::IsValid( m_iGuardWaypoint ) && m_fGuardEnd == 0.0f &&
 +         m_vHead.DistToSqr( CWaypoints::Get( m_iGuardWaypoint ).vOrigin ) < 64.0f * 64.0f )
-+        m_fGuardEnd = CBotrixPlugin::fTime + 8.0f + ( rand() % 8 );
++        m_fGuardEnd = CBotrixPlugin::fTime + sgtls::GuardTime();
 +    TWaypointId iDestination = sgtls::CObjectives::PickWaypoint( GetTeam(), m_pSpot );
 +    if ( m_fGuardEnd == 0.0f )
 +    {
-+        Vector vButton;
++        // A guard spot, not the button itself (a defender standing there goes on at once).
++        Vector vLook;
 +        m_iGuardWaypoint = ( CWaypoint::IsValid( iDestination ) &&
-+                             sgtls::CObjectives::IsButtonToGuard( GetTeam(), m_pSpot, vButton ) )
++                             sgtls::CObjectives::GuardSpotLook( GetTeam(), m_pSpot, iDestination, vLook ) )
 +                         ? iDestination : EWaypointIdInvalid;
++        if ( CWaypoint::IsValid( m_iGuardWaypoint ) )
++            m_vGuardLook = vLook;
 +    }
 +    if ( CWaypoint::IsValid( iDestination ) && iDestination != iCurrentWaypoint )
 +        return iDestination;
@@ -3487,9 +3517,11 @@ index 0000000..b652981
 +        m_vLook = vButton;
 +        m_bNeedAim = true;
 +        m_fEndAimTime = CBotrixPlugin::fTime + 0.3f;
-+        FLAG_SET( IN_USE, m_cCmd.buttons );
-+        // +use from a bot doesn't reach the button: call its Use() every frame in use range (80 units, at eye level,
-+        // nothing in between: not through a floor), as the game does for a player holding +use.
++        // No +use: the game took it for the nearest plain func_button. On tls_lockdown the Tau'ri holding the iris
++        // control pressed BlastButtonC3L next to it at each new attempt, which closed the blast door between the gate
++        // and the iris booth on the Goa'uld coming through (2026-11-04).
++        // +use from a bot doesn't reach the hold button anyway: call its Use() every frame in use range (80 units, at
++        // eye level, nothing in between: not through a floor), as the game does for a player holding +use.
 +        if ( vToButton.Length2D() < 72.0f && fabs( vToButton.z ) < 64.0f && ButtonInSight( pButton, vButton ) )
 +            sgtls::UseEntity( pButton, m_pEdict );
 +        return;
@@ -3499,6 +3531,20 @@ index 0000000..b652981
 +        m_bHoldingButton = false;
 +        m_iCurrentTask = EBotTaskInvalid;
 +        m_bNeedTaskCheck = true; // Objective done or enemy: back to the normal tasks.
++    }
++    // The active objectives changed: a bot on its way to a spot of the stage that is over picks a new destination.
++    // On tls_lockdown the Goa'uld that respawned for the breaker kept walking its 7000-unit way up after it fell,
++    // then all the way back down to the iris (2026-11-04).
++    if ( m_iStageSeen != sgtls::CObjectives::StageChanges() )
++    {
++        m_iStageSeen = sgtls::CObjectives::StageChanges();
++        if ( m_bAlive && m_iCurrentTask == EBotTaskFindEnemy )
++        {
++            m_iGuardWaypoint = EWaypointIdInvalid;
++            m_fGuardEnd = 0.0f;
++            m_iCurrentTask = EBotTaskInvalid;
++            m_bNeedTaskCheck = true;
++        }
 +    }
 +    if ( m_bAlive && !m_pCurrentEnemy && OpenTeleporter() )
 +        return;
@@ -3609,7 +3655,7 @@ index 0000000..b652981
 +    {
 +        if ( m_vHead.DistToSqr( CWaypoints::Get( m_iGuardWaypoint ).vOrigin ) > 48.0f * 48.0f )
 +            return false; // Not there yet.
-+        m_fGuardEnd = CBotrixPlugin::fTime + 8.0f + ( rand() % 8 );
++        m_fGuardEnd = CBotrixPlugin::fTime + sgtls::GuardTime();
 +    }
 +    if ( CBotrixPlugin::fTime >= m_fGuardEnd )
 +    {
@@ -3620,7 +3666,7 @@ index 0000000..b652981
 +        return false;
 +    }
 +    m_bNeedMove = false;
-+    m_vLook = vButton;
++    m_vLook = m_vGuardLook;
 +    m_bNeedAim = true;
 +    m_fEndAimTime = CBotrixPlugin::fTime + 0.3f;
 +    return true;
@@ -3723,10 +3769,10 @@ index 0000000..b652981
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/bot_sgtls.h b/mods/sgtls/bot_sgtls.h
 new file mode 100644
-index 0000000..2643433
+index 0000000..d550a10
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.h
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,106 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#ifndef __BOTRIX_BOT_SGTLS_H__
@@ -3793,8 +3839,10 @@ index 0000000..2643433
 +    float m_fRegroupEnd;           ///< Time limit of the current wait, 0 = not waiting.
 +    TWaypointId m_iGuardWaypoint;  ///< Guard spot the bot walks to (defender of a hold button), invalid = none.
 +    float m_fGuardEnd;             ///< End of the wait at the guard spot, 0 = not there yet.
++    Vector m_vGuardLook;           ///< What the bot watches from its guard spot (the place of the button it guards).
 +    float m_fNextStepJump;         ///< No new jump at a step before this time.
 +    edict_t* m_pSpot;              ///< Objective spot the bot works on (sgtls::CObjectives::PickWaypoint).
++    int m_iStageSeen;              ///< sgtls::CObjectives::StageChanges() when the bot last checked.
 +    float m_fGlassAimTime;         ///< When the bot is aimed at the window it found, 0 = none.
 +    int m_iTeleporter;             ///< Teleporter the bot opens (sgtls::CObjectives::TeleporterOnPath), -1 = none.
 +    float m_fTeleporterStart;      ///< When it started, to log a teleporter that doesn't open.
@@ -4135,12 +4183,15 @@ index 0000000..00d76c7
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/objectives_sgtls.cpp b/mods/sgtls/objectives_sgtls.cpp
 new file mode 100644
-index 0000000..2814b42
+index 0000000..acc1993
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.cpp
-@@ -0,0 +1,532 @@
+@@ -0,0 +1,818 @@
++#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
++#include <algorithm>
++#include <map>
 +#include <set>
 +#include <string>
 +#include <vector>
@@ -4148,6 +4199,7 @@ index 0000000..2814b42
 +#include "mod.h"
 +#include "players.h"
 +#include "server_plugin.h"
++#include "source_engine.h"
 +#include "waypoint.h"
 +#include "mods/sgtls/objectives_sgtls.h"
 +#include "mods/sgtls/sgtls_map.h"
@@ -4176,6 +4228,7 @@ index 0000000..2814b42
 +        Vector vMins, vMaxs, vCenter;
 +        std::vector<TWaypointId> aInside;  // Capture area: waypoints inside. Button: waypoints in use range.
 +        std::vector<TWaypointId> aNear;    // Waypoints around: where defenders wait.
++        std::vector< std::vector<TWaypointId> > aWatch; // Button: per place of aInside, the guard spots that see it.
 +    };
 +
 +    std::vector<CSpot> m_aSpots;
@@ -4286,6 +4339,237 @@ index 0000000..2814b42
 +                aWeighted.push_back( aActive[i] );
 +        }
 +    }
++
++    // Guard spots of each hold button, by button bounds, for the current map and waypoints (the traces are done once).
++    struct CGuardSpots
++    {
++        std::vector<TWaypointId> aNear;
++        std::vector< std::vector<TWaypointId> > aWatch;
++    };
++    std::map<std::string, CGuardSpots> m_aGuardCache;
++    // Per button (same key), the place of aInside where the last attacker held it from.
++    std::map<std::string, int> m_aLastPlace;
++
++    // The waypoints of the biggest strongly connected part (each one reaches all the others), for the current map and
++    // waypoints. Guards are kept in it: on tls_lockdown the gate exit jumps into two pockets beside the ramp (their
++    // waypoints toward the floor removed with the kawoosh's deadly volume) that have no way out, and guards sent
++    // there stayed until the watchdog killed them (31 suicides in a batch, 2026-11-04).
++    std::vector<char> m_aMainPart;
++    std::string m_sMainPartKey;
++
++    const std::vector<char>& MainPart()
++    {
++        int n = CWaypoints::Size();
++        char szKey[160];
++        snprintf( szKey, sizeof( szKey ), "%s %d", CBotrixPlugin::instance->sMapName.c_str(), n );
++        if ( m_sMainPartKey == szKey )
++            return m_aMainPart;
++        m_sMainPartKey = szKey;
++
++        // Kosaraju: finishing order on the graph, then components on the reversed graph in reverse finishing order.
++        std::vector<int> aOrder;
++        aOrder.reserve( n );
++        std::vector<char> aSeen( n, 0 );
++        std::vector< std::pair<int, int> > aStack;
++        for ( int s = 0; s < n; ++s )
++        {
++            if ( aSeen[s] )
++                continue;
++            aSeen[s] = 1;
++            aStack.push_back( std::make_pair( s, 0 ) );
++            while ( !aStack.empty() )
++            {
++                int u = aStack.back().first;
++                int& i = aStack.back().second;
++                const CWaypoints::WaypointNode& node = CWaypoints::GetNode( u );
++                if ( i < (int)node.neighbours.size() )
++                {
++                    int v = node.neighbours[i++].target;
++                    if ( v >= 0 && v < n && !aSeen[v] )
++                    {
++                        aSeen[v] = 1;
++                        aStack.push_back( std::make_pair( v, 0 ) );
++                    }
++                }
++                else
++                {
++                    aOrder.push_back( u );
++                    aStack.pop_back();
++                }
++            }
++        }
++        std::vector< std::vector<int> > aRev( n );
++        for ( int u = 0; u < n; ++u )
++        {
++            const CWaypoints::WaypointNode& node = CWaypoints::GetNode( u );
++            for ( int i = 0; i < (int)node.neighbours.size(); ++i )
++                if ( node.neighbours[i].target >= 0 && node.neighbours[i].target < n )
++                    aRev[ node.neighbours[i].target ].push_back( u );
++        }
++        std::vector<int> aComp( n, -1 ), aSize;
++        std::vector<int> aQueue;
++        for ( int k = n - 1; k >= 0; --k )
++        {
++            int s = aOrder[k];
++            if ( aComp[s] >= 0 )
++                continue;
++            int iComp = (int)aSize.size();
++            aSize.push_back( 0 );
++            aComp[s] = iComp;
++            aQueue.assign( 1, s );
++            while ( !aQueue.empty() )
++            {
++                int u = aQueue.back();
++                aQueue.pop_back();
++                ++aSize[iComp];
++                for ( size_t i = 0; i < aRev[u].size(); ++i )
++                    if ( aComp[ aRev[u][i] ] < 0 )
++                    {
++                        aComp[ aRev[u][i] ] = iComp;
++                        aQueue.push_back( aRev[u][i] );
++                    }
++            }
++        }
++        int iBest = 0;
++        for ( int c = 1; c < (int)aSize.size(); ++c )
++            if ( aSize[c] > aSize[iBest] )
++                iBest = c;
++        m_aMainPart.assign( n, 0 );
++        for ( int u = 0; u < n; ++u )
++            m_aMainPart[u] = ( aComp[u] == iBest ) ? 1 : 0;
++        return m_aMainPart;
++    }
++
++    std::string ButtonKey( const CSpot& c )
++    {
++        char szKey[128];
++        snprintf( szKey, sizeof( szKey ), "%d %.0f %.0f %.0f %.0f %.0f %.0f", CWaypoints::Size(), c.vMins.x, c.vMins.y,
++                  c.vMins.z, c.vMaxs.x, c.vMaxs.y, c.vMaxs.z );
++        return szKey;
++    }
++
++    // Guard spots of a hold button: for each place attackers hold it from (aInside), the waypoints near it that see
++    // that place as bots see (walls and props, not players): CSpot::aWatch, and all of them in CSpot::aNear. Chosen
++    // before with a line through the walls only to the button: on tls_lockdown the guards stood behind the bomb device
++    // (a prop on the desk) 135-190 units from the Tau'ri holding the button on the other side, without seeing them
++    // (59 of 66 blocked lines; the bomb fell in about a minute, 2026-11-04). A defender watches one place
++    // (PickWaypoint). Fewer than 3 spots: the old rule.
++    void GuardSpots( CSpot& c, bool bSameMap )
++    {
++        if ( !bSameMap )
++        {
++            m_aGuardCache.clear();
++            m_aLastPlace.clear();
++        }
++        std::string sKey = ButtonKey( c );
++        std::map<std::string, CGuardSpots>::const_iterator it = m_aGuardCache.find( sKey );
++        if ( it != m_aGuardCache.end() )
++        {
++            if ( it->second.aNear.size() >= 3 )
++            {
++                c.aNear = it->second.aNear;
++                c.aWatch = it->second.aWatch;
++            }
++            return;
++        }
++
++        CGuardSpots g;
++        g.aWatch.resize( c.aInside.size() );
++        std::vector<TWaypointId> aMost, aSome, aWalls;
++        const std::vector<char>& aMain = MainPart();
++        for ( TWaypointId w = 0; w < CWaypoints::Size(); ++w )
++        {
++            const Vector& v = CWaypoints::Get( w ).vOrigin;
++            if ( v.DistToSqr( c.vCenter ) > fButtonGuardDistance * fButtonGuardDistance ||
++                 v.DistToSqr( c.vCenter ) < fButtonUseDistance * fButtonUseDistance || !aMain[w] )
++                continue;
++            int iSeen = 0;
++            for ( size_t i = 0; i < c.aInside.size(); ++i )
++                if ( CUtil::IsVisible( v, CWaypoints::Get( c.aInside[i] ).vOrigin, EVisibilityBots, false ) )
++                {
++                    ++iSeen;
++                    g.aWatch[i].push_back( w );
++                }
++            if ( !c.aInside.empty() && iSeen * 4 >= (int)c.aInside.size() * 3 )
++                aMost.push_back( w );
++            if ( iSeen > 0 )
++                aSome.push_back( w );
++
++            Vector vTarget;
++            for ( int i = 0; i < 3; ++i )
++                vTarget[i] = clamp( v[i], c.vMins[i], c.vMaxs[i] );
++            Ray_t ray;
++            ray.Init( v, vTarget );
++            trace_t tr;
++            CTraceFilterWorldOnly cFilter;
++            CBotrixPlugin::pEngineTrace->TraceRay( ray, MASK_PLAYERSOLID, &cFilter, &tr );
++            if ( tr.fraction >= 0.99f || tr.endpos.DistToSqr( vTarget ) < 24.0f * 24.0f )
++                aWalls.push_back( w );
++        }
++        if ( aSome.size() >= 3 )
++            g.aNear = aSome;
++        else
++        {
++            g.aNear = aWalls;
++            g.aWatch.clear();
++        }
++        std::string sPlaces;
++        for ( size_t i = 0; i < c.aInside.size(); ++i )
++        {
++            const Vector& v = CWaypoints::Get( c.aInside[i] ).vOrigin;
++            char sz[64];
++            snprintf( sz, sizeof( sz ), " %d (%.0f %.0f %.0f): %d", c.aInside[i], v.x, v.y, v.z,
++                      i < g.aWatch.size() ? (int)g.aWatch[i].size() : 0 );
++            sPlaces += sz;
++        }
++        Msg( "[Botrix] %s: guard spots of the button at %.0f %.0f %.0f: %d (seeing most of its places %d, walls only %d); "
++             "guards per place:%s.\n", CBotrixPlugin::instance->sMapName.c_str(), c.vCenter.x, c.vCenter.y, c.vCenter.z,
++             (int)g.aNear.size(), (int)aMost.size(), (int)aWalls.size(), sPlaces.c_str() );
++        m_aGuardCache[sKey] = g;
++        if ( g.aNear.size() >= 3 )
++        {
++            c.aNear = g.aNear;
++            c.aWatch = g.aWatch;
++        }
++    }
++
++    // The place of a button a defender watches: the one nearest to an attacker within 1000 units of the button (the
++    // side they come from; from farther, a straight line says nothing: tls_lockdown's Tau'ri come round to the bomb
++    // from the south, their spawn is north of it), else the place of the last attempt at this button, else any.
++    int PlaceToWatch( const CSpot& c, int iAttackers )
++    {
++        int iPlace = -1;
++        float fBest = 1000.0f * 1000.0f;
++        for ( int p = 0; p < CPlayers::Size(); ++p )
++        {
++            CPlayer* pPlayer = CPlayers::Get( p );
++            if ( !pPlayer || !pPlayer->IsAlive() || pPlayer->GetTeam() != iAttackers ||
++                 pPlayer->GetHead().DistToSqr( c.vCenter ) > fBest )
++                continue;
++            for ( size_t i = 0; i < c.aInside.size() && i < c.aWatch.size(); ++i )
++            {
++                float fDist = pPlayer->GetHead().DistToSqr( CWaypoints::Get( c.aInside[i] ).vOrigin );
++                if ( !c.aWatch[i].empty() && fDist < fBest )
++                {
++                    fBest = fDist;
++                    iPlace = (int)i;
++                }
++            }
++        }
++        if ( iPlace < 0 )
++        {
++            std::map<std::string, int>::const_iterator it = m_aLastPlace.find( ButtonKey( c ) );
++            if ( it != m_aLastPlace.end() && it->second < (int)c.aWatch.size() && !c.aWatch[it->second].empty() )
++                iPlace = it->second;
++        }
++        if ( iPlace < 0 && !c.aWatch.empty() )
++        {
++            iPlace = rand() % c.aWatch.size();
++            if ( c.aWatch[iPlace].empty() )
++                iPlace = -1;
++        }
++        return iPlace;
++    }
 +}
 +
 +
@@ -4379,30 +4663,6 @@ index 0000000..2814b42
 +            else if ( v.DistToSqr( c.vCenter ) < fNearDistance * fNearDistance )
 +                c.aNear.push_back( w );
 +        }
-+        if ( c.bButton )
-+        {
-+            // Guard spots: the waypoints near the button with a clear line (walls only) to its nearest point.
-+            std::vector<TWaypointId> aGuard;
-+            for ( TWaypointId w = 0; w < CWaypoints::Size(); ++w )
-+            {
-+                const Vector& v = CWaypoints::Get( w ).vOrigin;
-+                if ( v.DistToSqr( c.vCenter ) > fButtonGuardDistance * fButtonGuardDistance ||
-+                     v.DistToSqr( c.vCenter ) < fButtonUseDistance * fButtonUseDistance )
-+                    continue;
-+                Vector vTarget;
-+                for ( int i = 0; i < 3; ++i )
-+                    vTarget[i] = clamp( v[i], c.vMins[i], c.vMaxs[i] );
-+                Ray_t ray;
-+                ray.Init( v, vTarget );
-+                trace_t tr;
-+                CTraceFilterWorldOnly cFilter;
-+                CBotrixPlugin::pEngineTrace->TraceRay( ray, MASK_PLAYERSOLID, &cFilter, &tr );
-+                if ( tr.fraction >= 0.99f || tr.endpos.DistToSqr( vTarget ) < 24.0f * 24.0f )
-+                    aGuard.push_back( w );
-+            }
-+            if ( aGuard.size() >= 3 )
-+                c.aNear.swap( aGuard );
-+        }
 +        if ( c.aInside.empty() )
 +        {
 +            // Smaller than the waypoint grid: use the nearest waypoint.
@@ -4410,6 +4670,8 @@ index 0000000..2814b42
 +            if ( CWaypoint::IsValid( w ) )
 +                c.aInside.push_back( w );
 +        }
++        if ( c.bButton )
++            GuardSpots( c, bSameMap );
 +    }
 +
 +    // Button-operated teleporters: their entities (a round restart can recreate them) and waypoints. The on / off
@@ -4539,9 +4801,19 @@ index 0000000..2814b42
 +    pSpot = c.pEdict;
 +
 +    // Attackers go into the area / to the button. Defenders stand in an area half of the time (to block the
-+    // capture) and around it otherwise; at a button, which they can't block, at a guard spot 3 times in 4.
++    // capture) and around it otherwise; at a button, which they can't block, at a guard spot 3 times in 4 (<prefix>_defend).
 +    bool bAttacker = ( Attackers( c ) == iTeam );
-+    bool bInside = bAttacker || c.aNear.empty() || ( c.bButton ? ( rand() % 4 ) == 0 : ( rand() & 1 ) != 0 );
++    bool bInside = bAttacker || c.aNear.empty() || ( c.bButton ? ( sgtls::iGuardInside > 0 && ( rand() % sgtls::iGuardInside ) == 0 ) : ( rand() & 1 ) != 0 );
++    // A defender of a button watches the place under threat from a guard spot that sees it, or stands on that place
++    // (not on another one: tls_lockdown's guards at the north side of the bomb desk were blind to the Tau'ri holding
++    // it from the south, 2026-11-04).
++    if ( !bAttacker && c.bButton )
++    {
++        int iPlace = PlaceToWatch( c, Attackers( c ) );
++        if ( iPlace >= 0 )
++            return ( bInside && MainPart()[ c.aInside[iPlace] ] ) ? c.aInside[iPlace]
++                                                                : c.aWatch[iPlace][ rand() % c.aWatch[iPlace].size() ];
++    }
 +    const std::vector<TWaypointId>& aChoice = bInside ? c.aInside : c.aNear;
 +    if ( aChoice.empty() )
 +        return EWaypointIdInvalid;
@@ -4572,6 +4844,56 @@ index 0000000..2814b42
 +            return true;
 +        }
 +    return false;
++}
++
++
++bool sgtls::CObjectives::GuardSpotLook( TTeam iTeam, edict_t* pSpot, TWaypointId w, Vector& vLook )
++{
++    Refresh();
++    for ( size_t a = 0; a < m_aSpots.size() && pSpot; ++a )
++    {
++        const CSpot& c = m_aSpots[a];
++        if ( c.pEdict != pSpot )
++            continue;
++        if ( !c.bButton || !IsActive( c ) || Attackers( c ) == iTeam ||
++             std::find( c.aInside.begin(), c.aInside.end(), w ) != c.aInside.end() )
++            return false;
++        if ( std::find( c.aNear.begin(), c.aNear.end(), w ) == c.aNear.end() )
++            return false;
++        vLook = c.vCenter; // Old rule (walls only): the button.
++        int iThreat = PlaceToWatch( c, Attackers( c ) );
++        int iSeen = -1;
++        for ( size_t i = 0; i < c.aWatch.size(); ++i )
++            if ( std::find( c.aWatch[i].begin(), c.aWatch[i].end(), w ) != c.aWatch[i].end() &&
++                 ( iSeen < 0 || (int)i == iThreat ) )
++                iSeen = (int)i;
++        if ( iSeen >= 0 )
++            vLook = CWaypoints::Get( c.aInside[iSeen] ).vOrigin;
++        return true;
++    }
++    return false;
++}
++
++
++void sgtls::CObjectives::NoteCapture( const Vector& vEye )
++{
++    Refresh();
++    float fBest = 200.0f * 200.0f;
++    const CSpot* pBest = NULL;
++    for ( size_t a = 0; a < m_aSpots.size(); ++a )
++        if ( m_aSpots[a].bButton && IsActive( m_aSpots[a] ) && m_aSpots[a].vCenter.DistToSqr( vEye ) < fBest )
++        {
++            fBest = m_aSpots[a].vCenter.DistToSqr( vEye );
++            pBest = &m_aSpots[a];
++        }
++    if ( !pBest || pBest->aInside.empty() )
++        return;
++    int iPlace = 0;
++    for ( size_t i = 1; i < pBest->aInside.size(); ++i )
++        if ( CWaypoints::Get( pBest->aInside[i] ).vOrigin.DistToSqr( vEye ) <
++             CWaypoints::Get( pBest->aInside[iPlace] ).vOrigin.DistToSqr( vEye ) )
++            iPlace = (int)i;
++    m_aLastPlace[ ButtonKey( *pBest ) ] = iPlace;
 +}
 +
 +
@@ -4617,6 +4939,17 @@ index 0000000..2814b42
 +}
 +
 +
++namespace
++{
++    int m_iStageChanges = 0;
++}
++
++int sgtls::CObjectives::StageChanges()
++{
++    return m_iStageChanges;
++}
++
++
 +void sgtls::CObjectives::LogStage()
 +{
 +    static float fNext = 0.0f;
@@ -4641,6 +4974,7 @@ index 0000000..2814b42
 +        return;
 +    sLast = sNow;
 +    sLastMap = szMap;
++    ++m_iStageChanges;
 +    Msg( "[Botrix] %s: active objectives now: %s (t=%.0f).\n", szMap, sNow.empty() ? "none" : sNow.c_str(), CBotrixPlugin::fTime );
 +}
 +
@@ -4673,10 +5007,10 @@ index 0000000..2814b42
 +}
 diff --git a/mods/sgtls/objectives_sgtls.h b/mods/sgtls/objectives_sgtls.h
 new file mode 100644
-index 0000000..ffce6e0
+index 0000000..2c5e4a8
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.h
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,75 @@
 +#ifndef __BOTRIX_OBJECTIVES_SGTLS_H__
 +#define __BOTRIX_OBJECTIVES_SGTLS_H__
 +
@@ -4701,6 +5035,10 @@ index 0000000..ffce6e0
 +        /// Log the orders of the active objectives when they change (how far the attackers got, balance tests).
 +        static void LogStage();
 +
++        /// Times the active objectives changed (LogStage, checked every second): bots compare it to drop a destination
++        /// picked for a stage that is over.
++        static int StageChanges();
++
 +        /// Waypoint where a bot of iTeam should go now (attack or defend an active area),
 +        /// EWaypointIdInvalid if the map has no active area. pSpot is the bot's spot, kept between calls: an
 +        /// attacker stays on it while it is active.
@@ -4712,6 +5050,13 @@ index 0000000..ffce6e0
 +        /// True if pSpot is the button of an active hold-button objective that iTeam defends. vButton receives its
 +        /// center: what a defender at a guard spot watches.
 +        static bool IsButtonToGuard( TTeam iTeam, edict_t* pSpot, Vector& vButton );
++
++        /// A player started holding a button from vEye (capture_start): its defenders will watch that place.
++        static void NoteCapture( const Vector& vEye );
++
++        /// True if w is a guard spot (not a place at the button) of pSpot, an active button that iTeam defends. vLook
++        /// receives the place to watch from there: the one under threat if w sees it, else one it sees.
++        static bool GuardSpotLook( TTeam iTeam, edict_t* pSpot, TWaypointId w, Vector& vLook );
 +
 +        /// Distance from v to the spot (0 inside its box), a big number for an unknown spot.
 +        static float DistanceToSpot( edict_t* pSpot, const Vector& v );
@@ -6317,10 +6662,10 @@ index 0000000..263c4ca
 +#endif // __BOTRIX_SGTLS_MAP_H__
 diff --git a/mods/sgtls/sgtls_util.cpp b/mods/sgtls/sgtls_util.cpp
 new file mode 100644
-index 0000000..36a934e
+index 0000000..29b65b3
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.cpp
-@@ -0,0 +1,1271 @@
+@@ -0,0 +1,1380 @@
 +#include <string.h>
 +#include <map>
 +#include <string>
@@ -6860,7 +7205,8 @@ index 0000000..36a934e
 +        CBotrixPlugin::pServerPluginHelpers->ClientCommand( pEdict, szCmd );
 +    }
 +
-+#ifdef BOTRIX_SGTC2
++    // <prefix>_use <entindex> <activator entindex> : call the entity's Use() as if the player pressed +use on it (SGTC2:
++    // a DHD button; SGTLS: open a door for the waypoint analysis).
 +    // sgtc2_use <entindex> <activator entindex> : call the entity's Use() as if the player pressed +use on it.
 +    void UseCommand( const CCommand& args )
 +    {
@@ -6872,7 +7218,6 @@ index 0000000..36a934e
 +             EntityBase( pActivator ) ? pActivator->GetClassName() : "?",
 +             sgtls::UseEntity( pEdict, pActivator ) ? "done" : "refused" );
 +    }
-+#endif
 +
 +#ifdef BOTRIX_SGTC2
 +    // sgtc2_tauri_skill_bonus [n] : Tau'ri bots that join from now on get n intelligence levels more.
@@ -6949,6 +7294,28 @@ index 0000000..36a934e
 +        if ( args.ArgC() > 1 )
 +            sgtls::iKullMax = atoi( args.Arg( 1 ) );
 +        Msg( "Kull Warriors per team, for bots: %d%s\n", sgtls::iKullMax, sgtls::iKullMax < 0 ? " (no limit)" : "" );
++    }
++
++    // <prefix>_defend [guard min s] [guard max s] [1 in N at the button] : how defenders of a hold button guard it, on
++    // this map (defaults 8 15 4 at the next map).
++    void DefendCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 2 )
++        {
++            sgtls::fGuardMin = atof( args.Arg( 1 ) );
++            sgtls::fGuardMax = MAX2( sgtls::fGuardMin, (float)atof( args.Arg( 2 ) ) );
++        }
++        if ( args.ArgC() > 3 )
++            sgtls::iGuardInside = MAX2( 0, atoi( args.Arg( 3 ) ) );
++        Msg( "Hold-button defenders: guard %.0f-%.0f s, at the button 1 time in %d%s\n", sgtls::fGuardMin, sgtls::fGuardMax,
++             sgtls::iGuardInside, sgtls::iGuardInside == 0 ? " (never)" : "" );
++    }
++
++    void CapDiagCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::bCaptureDiag = atoi( args.Arg( 1 ) ) != 0;
++        Msg( "Capture diagnostics: %d\n", sgtls::bCaptureDiag );
 +    }
 +
 +    // Bot weapon settings of config.ini changed for the current map only, by weapon id: the values to put back.
@@ -7278,10 +7645,91 @@ index 0000000..36a934e
 +bool sgtls::bKeepDistance = true;
 +bool sgtls::bRegroup = true;
 +int sgtls::iKullMax = -1;
++float sgtls::fGuardMin = 8.0f;
++float sgtls::fGuardMax = 15.0f;
++int sgtls::iGuardInside = 4;
++bool sgtls::bCaptureDiag = false;
++
++void sgtls::LogCapture( CPlayer* pCapper, const char* szEvent )
++{
++    const Vector& vCap = pCapper->GetHead();
++    int iAlive = 0, iNear = 0, iSee = 0, iOnHim = 0, iOther = 0, iEscort = 0;
++    std::string sList;
++    CTraceFilterWorldOnly cFilter;
++    for ( TPlayerIndex i = 0; i < CPlayers::Size(); ++i )
++    {
++        CPlayer* p = CPlayers::Get( i );
++        if ( !p || p == pCapper || !p->IsAlive() || p->GetTeam() < 2 )
++            continue;
++        float fDist = p->GetHead().DistTo( vCap );
++        if ( p->GetTeam() == pCapper->GetTeam() )
++        {
++            if ( fDist < 800.0f )
++                ++iEscort;
++            continue;
++        }
++        ++iAlive;
++        if ( fDist > 1500.0f )
++            continue;
++        ++iNear;
++        Ray_t ray;
++        ray.Init( p->GetHead(), vCap );
++        trace_t tr;
++        CBotrixPlugin::pEngineTrace->TraceRay( ray, MASK_PLAYERSOLID, &cFilter, &tr );
++        bool bSee = tr.fraction >= 0.99f;
++        CPlayer* pEnemy = p->IsBot() ? ( (CBot*)p )->GetCurrentEnemy() : NULL;
++        bool bEnemy = true, bVis = bSee, bCone = bSee;
++        if ( p->IsBot() )
++            ( (CBot*)p )->DiagSight( pCapper, bEnemy, bVis, bCone );
++        iSee += bSee;
++        if ( pEnemy == pCapper )
++            ++iOnHim;
++        else if ( pEnemy )
++            ++iOther;
++        // A line through the world only, but the bots' own sight blocked: by what (entity class / model, how far).
++        char szBlock[96] = "";
++        if ( bSee && !bVis )
++        {
++            Vector vEar;
++            CUtil::EntityHead( pCapper->GetEdict(), vEar );
++            CTraceFilterWithFlags& cBots = CUtil::GetTraceFilter( EVisibilityBots );
++            CUtil::TraceLine( p->GetHead(), vEar, cBots.iTraceFlags, &cBots );
++            const trace_t& t = CUtil::TraceResult();
++            const char* szHit = "world";
++            const char* szModel = "";
++            if ( t.m_pEnt )
++            {
++                int iHit = reinterpret_cast<IHandleEntity*>( t.m_pEnt )->GetRefEHandle().GetEntryIndex();
++                edict_t* pHit = CBotrixPlugin::pEngineServer->PEntityOfEntIndex( iHit );
++                if ( pHit && !pHit->IsFree() )
++                {
++                    szHit = pHit->GetClassName();
++                    szModel = pHit->GetIServerEntity() ? STRING( pHit->GetIServerEntity()->GetModelName() ) : "";
++                }
++                else if ( iHit > 0 )
++                    szHit = "static prop";
++            }
++            snprintf( szBlock, sizeof( szBlock ), " blocked by %s %s at %.0f", szHit, szModel, t.fraction * p->GetHead().DistTo( vEar ) );
++        }
++        char sz[256];
++        snprintf( sz, sizeof( sz ), " [%s %.0f @%.0f,%.0f,%.0f%s%s%s%s%s%s]", p->GetName(), fDist, p->GetHead().x, p->GetHead().y, p->GetHead().z, bSee ? " sees" : "", bVis ? " vis" : "",
++                  bCone ? " cone" : "", bEnemy ? "" : " notenemy", pEnemy == pCapper ? " on him" : pEnemy ? " busy" : "", szBlock );
++        sList += sz;
++    }
++    char szLine[2048];
++    snprintf( szLine, sizeof( szLine ), "%s: capture diag %s by %s hp %d at %.0f %.0f %.0f: defenders alive %d, within 1500 %d, "
++              "line of sight %d, targeting him %d, fighting another %d; attackers within 800: %d;%s",
++              CBotrixPlugin::instance->sMapName.c_str(), szEvent, pCapper->GetName(), pCapper->IsAlive() ? pCapper->GetHealth() : 0,
++              vCap.x, vCap.y, vCap.z, iAlive, iNear, iSee, iOnHim, iOther, iEscort, sList.c_str() );
++    AuditLog( szLine );
++}
 +
 +void sgtls::RestoreMapSettings()
 +{
 +    iKullMax = -1;
++    fGuardMin = 8.0f;
++    fGuardMax = 15.0f;
++    iGuardInside = 4;
 +    for ( std::map<int, CSavedWeapon>::const_iterator it = aSavedWeapons.begin(); it != aSavedWeapons.end(); ++it )
 +    {
 +        if ( !CWeapons::IsValid( it->first ) )
@@ -7542,7 +7990,13 @@ index 0000000..36a934e
 +    ConCommand cKullMax( SGTLS_PREFIX "_kullmax", SGTLS_COMMAND_CALLBACK( KullMaxCommand ), "[n]: most Kull Warriors per team that bots make, on this map (-1 = no limit)." );
 +    SGTLS_DECLARE_NOARGS( MapWeaponCommand )
 +    ConCommand cMapWeapon( SGTLS_PREFIX "_mapweapon", SGTLS_COMMAND_CALLBACK( MapWeaponCommand ), "<weapon> [delay <ms>] [range <min> <max>]: bots' use of a weapon on this map only." );
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cMem, &cKullMax, &cMapWeapon };
++    SGTLS_DECLARE_NOARGS( DefendCommand )
++    SGTLS_DECLARE_NOARGS( UseCommand )
++    ConCommand cUse( SGTLS_PREFIX "_use", SGTLS_COMMAND_CALLBACK( UseCommand ), "<entindex> <activator entindex>: call an entity's Use() (tests: doors, buttons)." );
++    ConCommand cDefend( SGTLS_PREFIX "_defend", SGTLS_COMMAND_CALLBACK( DefendCommand ), "[guard min s] [guard max s] [1 in N at the button, 0 = never]: how bots defend a hold button, on this map." );
++    SGTLS_DECLARE_NOARGS( CapDiagCommand )
++    ConCommand cCapDiag( SGTLS_PREFIX "_capdiag", SGTLS_COMMAND_CALLBACK( CapDiagCommand ), "[0|1]: log the defenders around each capture (tests)." );
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cMem, &cKullMax, &cMapWeapon, &cDefend, &cCapDiag, &cUse };
 +#elif defined(BOTRIX_SGTC2)
 +    SGTLS_DECLARE_NOARGS( UseCommand )
 +    SGTLS_DECLARE_NOARGS( MemCommand )
@@ -7594,15 +8048,16 @@ index 0000000..36a934e
 +}
 diff --git a/mods/sgtls/sgtls_util.h b/mods/sgtls/sgtls_util.h
 new file mode 100644
-index 0000000..cb7b145
+index 0000000..e776986
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.h
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,106 @@
 +#ifndef __BOTRIX_SGTLS_UTIL_H__
 +#define __BOTRIX_SGTLS_UTIL_H__
 +
 +// Helpers for Stargate: The Last Stand (closed-source server.dll): network property access by name.
 +
++#include <stdlib.h>
 +#include "interface.h"
 +#include "vector.h" // public/ (episode1) or public/mathlib/ (Orange Box): QAngle
 +
@@ -7676,6 +8131,17 @@ index 0000000..cb7b145
 +    /// SGTLS: a bot doesn't take the Kull Warrior class when its team already has this many Kull (humans
 +    /// included; <prefix>_kullmax, -1 = no limit, for the current map). Humans choose freely.
 +    extern int iKullMax;
++    /// SGTLS: defenders of a hold button wait fGuardMin..fGuardMax seconds at a guard spot watching it, and go to the
++    /// button itself 1 time in iGuardInside (0 = never) instead (<prefix>_defend, for the current map).
++    extern float fGuardMin, fGuardMax;
++    extern int iGuardInside;
++    /// A guard time in fGuardMin..fGuardMax.
++    inline float GuardTime() { return fGuardMin + ( fGuardMax - fGuardMin ) * ( rand() % 1001 ) / 1000.0f; }
++
++    /// Log line at a capture start / end: the capturer, and each living enemy within 1500 units (distance, line of
++    /// sight, its target). Only while bCaptureDiag (<prefix>_capdiag 1, for tests).
++    extern bool bCaptureDiag;
++    void LogCapture( CPlayer* pCapper, const char* szEvent );
 +
 +    /// Put back the bot settings changed for the map (<prefix>_mapweapon, <prefix>_kullmax). Called at level shutdown.
 +    void RestoreMapSettings();
@@ -7906,7 +8372,7 @@ index e44fbb2..8e04e05 100644
 +
  #endif // __BOTRIX_SERVER_PLUGIN_H__
 diff --git a/source_engine.cpp b/source_engine.cpp
-index 9f907ab..cb2e346 100644
+index 9f907ab..969d952 100644
 --- a/source_engine.cpp
 +++ b/source_engine.cpp
 @@ -10,6 +10,7 @@
@@ -7940,7 +8406,7 @@ index 9f907ab..cb2e346 100644
          int index = pServerEntity->GetRefEHandle().GetEntryIndex();
          if ( index == 0 || index >= MAX_EDICTS ) // 0 is the world's entity.
              return true;
-@@ -84,15 +94,33 @@ public:
+@@ -84,15 +94,40 @@ public:
              return false;
  
          if ( iVisibility == EVisibilityBots )
@@ -7952,6 +8418,13 @@ index 9f907ab..cb2e346 100644
 +            // Projectiles in flight (a staff blast between two bots made them lose each other), weapons and items
 +            // don't hide a player.
 +            edict_t *pEdict = CBotrixPlugin::instance->pEngineServer->PEntityOfEntIndex( index );
++#ifdef BOTRIX_SGTLS
++            // Nor do windows (func_breakable_surf): a bot fires at an enemy behind one and breaks it, as a player does.
++            // tls_lockdown's iris control is in a glass booth: the Goa'uld in the corridor in front saw the Tau'ri
++            // closing the iris and didn't shoot (2026-11-04). Explosive shots still stop at the glass (CShotTraceFilter).
++            if ( pEdict && !pEdict->IsFree() && strcmp( pEdict->GetClassName(), "func_breakable_surf" ) == 0 )
++                return false;
++#endif
 +            return pEdict == NULL || pEdict->IsFree() || !CUtil::IsSeeThrough( pEdict );
 +        }
  
@@ -7976,7 +8449,7 @@ index 9f907ab..cb2e346 100644
  
          bool bShouldHit = ( iType == EItemTypeObject && FLAG_SOME_SET( FObjectHeavy, CItems::GetItems( iType )[ iItemIndex ].iFlags ) ) ||
                              iType == EItemTypeDoor || iType == EItemTypeOther || iType == EItemTypePlayerSpawn;
-@@ -102,7 +130,7 @@ public:
+@@ -102,7 +137,7 @@ public:
          {
              const char* szClassName = pEdict->GetClassName();
              BLOG_T( "Should hit %s %d (%s, id %d): %s.", CTypeToString::EntityTypeToString( iType ).c_str(), 
@@ -7985,7 +8458,7 @@ index 9f907ab..cb2e346 100644
          }
  
          return bShouldHit;
-@@ -126,6 +154,63 @@ protected:
+@@ -126,6 +161,63 @@ protected:
  };
  
  
@@ -8049,7 +8522,7 @@ index 9f907ab..cb2e346 100644
  CGenericTraceFilter cWorldTraceFilter( EVisibilityWorld );
  CGenericTraceFilter cWaypointTraceFilter( EVisibilityWaypoints );
  CGenericTraceFilter cBotsTraceFilter(EVisibilityBots);
-@@ -258,6 +343,10 @@ bool CUtil::IsVisible( const Vector& vSrc, const Vector& vDest, TVisibility iVis
+@@ -258,6 +350,10 @@ bool CUtil::IsVisible( const Vector& vSrc, const Vector& vDest, TVisibility iVis
  
      CTraceFilterWithFlags* pTraceFilter = &GetTraceFilter( iVisibility );
      TraceLine(vSrc, vDest, pTraceFilter->iTraceFlags, pTraceFilter );
@@ -8060,7 +8533,7 @@ index 9f907ab..cb2e346 100644
      return m_TraceResult.fraction >= 0.95f;
  }
  
-@@ -396,7 +485,14 @@ TReach CUtil::GetReachableInfoFromTo( const Vector& vSrc, Vector& vDest, bool& b
+@@ -396,7 +492,14 @@ TReach CUtil::GetReachableInfoFromTo( const Vector& vSrc, Vector& vDest, bool& b
              case EReachStairs:
              {
                  float fDistSqr = vLastStair.AsVector2D().DistToSqr( vHit.AsVector2D() );

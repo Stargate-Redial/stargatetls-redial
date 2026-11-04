@@ -20,7 +20,7 @@
 An unofficial add-on for **Stargate: The Last Stand** (1.1), the Stargate SG-1 mod for Half-Life 2:
 
 - **It adds bots** that pick a team, a class and its equipment, then attack or defend the objectives: capture zones, buttons, the DHD.
-- The main menu says "Redial V1.0.1".
+- The main menu says "Redial V1.0.2".
 
 *Made with love by [@CreepyInpu](https://x.com/CreepyInpu).*
 
@@ -28,7 +28,7 @@ An unofficial add-on for **Stargate: The Last Stand** (1.1), the Stargate SG-1 m
 
 1. Install **Source SDK Base 2007** from Steam: in your Library, under Tools, or press Win+R and run `steam://install/218`.
 2. Install **Stargate: The Last Stand 1.1** ([ModDB](https://www.moddb.com/mods/stargate-the-last-stand/downloads/stargate-the-last-stand-11-client-full)). The mod goes into `Steam\steamapps\sourcemods\sgtls`.
-3. Download **`stargatetls-redial-v1.0.1.zip`** from [Releases](../../releases), extract it anywhere and double-click **`install.bat`**.
+3. Download **`stargatetls-redial-v1.0.2.zip`** from [Releases](../../releases), extract it anywhere and double-click **`install.bat`**.
 4. Restart Steam and launch **Stargate: The Last Stand**. Then either:
    - **Create Server** on `tls_abydos`, with 32 slots if you can (with fewer, the mod closes parts of some maps): bots join and fill the game up to 10 players;
    - or join the 24/7 server: **Find Servers > Internet**, or `connect 92.222.243.147:27031` in the console.
@@ -85,7 +85,7 @@ Other maps have no waypoints: the bots won't move there.
 Un ajout non officiel pour **Stargate: The Last Stand** (1.1), le mod Stargate SG-1 de Half-Life 2 :
 
 - **il ajoute des bots** qui choisissent une équipe, une classe et son équipement, puis attaquent ou défendent les objectifs : zones de capture, boutons, DHD ;
-- le menu principal affiche « Redial V1.0.1 ».
+- le menu principal affiche « Redial V1.0.2 ».
 
 *Fait avec amour par [@CreepyInpu](https://x.com/CreepyInpu).*
 
@@ -93,7 +93,7 @@ Un ajout non officiel pour **Stargate: The Last Stand** (1.1), le mod Stargate S
 
 1. Installez **Source SDK Base 2007** depuis Steam : dans votre bibliothèque, rubrique Outils, ou avec Win+R puis `steam://install/218`.
 2. Installez **Stargate: The Last Stand 1.1** ([ModDB](https://www.moddb.com/mods/stargate-the-last-stand/downloads/stargate-the-last-stand-11-client-full)). Le mod va dans `Steam\steamapps\sourcemods\sgtls`.
-3. Téléchargez **`stargatetls-redial-v1.0.1.zip`** dans les [Releases](../../releases), extrayez-le n'importe où, puis double-cliquez sur **`install.bat`**.
+3. Téléchargez **`stargatetls-redial-v1.0.2.zip`** dans les [Releases](../../releases), extrayez-le n'importe où, puis double-cliquez sur **`install.bat`**.
 4. Redémarrez Steam et lancez **Stargate: The Last Stand**. Ensuite :
    - **Create Server** sur `tls_abydos`, avec 32 places si possible (en dessous, le mod ferme des parties de certaines cartes) : des bots rejoignent la partie et la complètent jusqu'à 10 joueurs ;
    - ou rejoignez le serveur 24/7 : **Find Servers > Internet**, ou `connect 92.222.243.147:27031` dans la console.
