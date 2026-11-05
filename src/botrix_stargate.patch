@@ -1,5 +1,5 @@
 diff --git a/bot.cpp b/bot.cpp
-index 5dbd2d1..fabcbff 100644
+index 5dbd2d1..d8b43dc 100644
 --- a/bot.cpp
 +++ b/bot.cpp
 @@ -11,6 +11,9 @@
@@ -155,7 +155,7 @@ index 5dbd2d1..fabcbff 100644
      
      CPlayer* pCheckPlayer = NULL;
      while ( m_iNextCheckPlayer < CPlayers::Size() )
-@@ -1301,7 +1377,15 @@ void CBot::UpdateWorld()
+@@ -1301,7 +1377,16 @@ void CBot::UpdateWorld()
                  m_aNearPlayers.set(m_iNextCheckPlayer);
  
                  // Check if players are not stucked with each other.
@@ -164,16 +164,20 @@ index 5dbd2d1..fabcbff 100644
 +                // face to face (the user saw it on sg2_temple; 9 bots killed by the watchdog in 7 minutes on
 +                // sg2_sanctuary, in pairs going opposite ways on the same waypoints, 2026-10-28). Any bot that needs
 +                // to move steps right: two facing bots pass each other.
-+                if ( m_bNeedMove && !m_bStuckTryingSide && ( fDistSqr <= (SQR(CMod::iPlayerRadius) << 2) ) )
++                if ( m_bNeedMove && !m_bStuckTryingSide && ( fDistSqr <= (SQR(CMod::iPlayerRadius) << 2) ) && !KeepGoingThrough() &&
++                     !FollowRatherThanStep( pCheckPlayer ) )
 +#else
                  if ( m_bStuck && !m_bStuckTryingSide && ( fDistSqr <= (SQR(CMod::iPlayerRadius) << 2) ) )
 +#endif
                  {
                      Vector vNeeded(m_vDestination), vOther( pCheckPlayer->GetHead() );
                      vNeeded -= m_vHead;
-@@ -1321,6 +1405,27 @@ void CBot::UpdateWorld()
+@@ -1319,8 +1404,29 @@ void CBot::UpdateWorld()
+                         // Player stucked with this one (move right for 1/4 seconds).
+ 						m_bResolvingStuck = true;
                          m_bStuckTryingSide = true;
-                         m_bStuckTryGoLeft = false;
+-                        m_bStuckTryGoLeft = false;
++                        m_bStuckTryGoLeft = SideStepLeft();
                          m_fEndActionTime = CBotrixPlugin::fTime + 0.25f;
 +#if defined(BOTRIX_SGTLS) || defined(BOTRIX_SGTC2)
 +                        // Still face to face after a second (a doorway too narrow to step aside: sg2_sanctuary's
@@ -199,7 +203,7 @@ index 5dbd2d1..fabcbff 100644
                      }
                  }
              }
-@@ -1500,6 +1605,43 @@ void CBot::WeaponChoose()
+@@ -1500,6 +1606,43 @@ void CBot::WeaponChoose()
             cWeapon.CanShoot(CWeapon::SECONDARY, m_fDistanceSqrToEnemy) ) ) )
          return; // Don't change weapon if enemy is close... TODO: sometimes using melee and not changing.
  
@@ -243,7 +247,7 @@ index 5dbd2d1..fabcbff 100644
      // If not engaging enemy, reload some weapons. Here cWeapon.CanUse() is true.
      if ( (m_pCurrentEnemy == NULL) && m_bNeedReload )
      {
-@@ -1622,15 +1764,133 @@ void CBot::ChangeWeapon( TWeaponId iIndex )
+@@ -1622,15 +1765,133 @@ void CBot::ChangeWeapon( TWeaponId iIndex )
          BLOG_W( "%s -> current weapon is null.", GetName() );
  }
  
@@ -379,7 +383,7 @@ index 5dbd2d1..fabcbff 100644
          CWeaponWithAmmo& cWeapon = m_aWeapons[m_iWeapon];
          GoodAssert( cWeapon.CanUse() );
  
-@@ -1761,6 +2021,28 @@ bool CBot::ResolveStuckMove()
+@@ -1761,6 +2022,28 @@ bool CBot::ResolveStuckMove()
          return false;
      }
  
@@ -408,7 +412,7 @@ index 5dbd2d1..fabcbff 100644
      pStuckObject = NULL;
  	CWaypoint& wCurr = CWaypoints::Get( iCurrentWaypoint );
  
-@@ -1865,6 +2147,27 @@ bool CBot::ResolveStuckMove()
+@@ -1865,6 +2148,27 @@ bool CBot::ResolveStuckMove()
  
              // First test if we are touching current waypoint.
              bool bTouch = wCurr.IsTouching(m_vHead, m_bLadderMove);
@@ -436,7 +440,7 @@ index 5dbd2d1..fabcbff 100644
              if ( bTouch || m_bStuckGotoCurrent )
              {
  				m_bResolvingStuck = m_bRepeatWaypointAction = true;
-@@ -2008,7 +2311,13 @@ bool CBot::NavigatorMove()
+@@ -2008,7 +2312,13 @@ bool CBot::NavigatorMove()
                  //GoodAssert( iCurrentWaypoint == iNextWaypoint );
  
                  // If lost and iCurrentWaypoint == iNextWaypoint, perform waypoint 'touch'.
@@ -450,7 +454,7 @@ index 5dbd2d1..fabcbff 100644
                  {
                      if ( m_cNavigator.HasMoreCoords() )
                      {
-@@ -2105,6 +2414,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2105,6 +2415,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
  
              QAngle angNeeded;
              VectorAngles(vDestinationAim, angNeeded);
@@ -461,7 +465,7 @@ index 5dbd2d1..fabcbff 100644
  
              CUtil::GetAngleDifference(m_cCmd.viewangles, angNeeded, angNeeded);
              angNeeded /= iFramesLeft;
-@@ -2116,6 +2429,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2116,6 +2430,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
              Vector vAbs(m_vLook);
              vAbs -= m_vHead;
              VectorAngles(vAbs, m_cCmd.viewangles); // Convert vector to angles.
@@ -472,7 +476,7 @@ index 5dbd2d1..fabcbff 100644
              m_bNeedAim = false;
          }
  
-@@ -2161,7 +2478,7 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2161,7 +2479,7 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
              m_bNeedCheckStuck = false;
  
              // Distance that bot moves since m_fStuckCheckTime.
@@ -481,7 +485,7 @@ index 5dbd2d1..fabcbff 100644
              {
                  m_bNeedCheckStuck = true;
                  m_fStuckCheckTime = CBotrixPlugin::fTime + 5.0f; // Try again in 5 secs.
-@@ -2176,7 +2493,12 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2176,7 +2494,12 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
          //vAccelerate /= fDeltaTime;   // a = (v - v0)/t
  
          //m_vLastVelocity = vSpeed;
@@ -494,7 +498,7 @@ index 5dbd2d1..fabcbff 100644
          float fSpeed;
  
          // Need to stop before next move.
-@@ -2197,7 +2519,11 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2197,7 +2520,11 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
  
              vNeededVelocity -= m_vHead; // Destination - head (absolute vector).
  
@@ -506,7 +510,7 @@ index 5dbd2d1..fabcbff 100644
              {
                  if ( CBotrixPlugin::fTime < m_fEndActionTime )
                  {
-@@ -2286,7 +2612,8 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2286,7 +2613,8 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
          if ( m_pCurrentEnemy )
          {
              GoodAssert( m_pCurrentEnemy != this );
@@ -516,7 +520,7 @@ index 5dbd2d1..fabcbff 100644
              {
                  m_bEnemyAimed = true;
                  m_bStayReloading = false; // At reload time, check if it is better to change weapon. TODO: check.
-@@ -2301,6 +2628,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2301,6 +2629,10 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
                  {
                      if ( pWeapon->CanUse() ) // Stay shooting after first time aimed at enemy.
                      {
@@ -527,7 +531,7 @@ index 5dbd2d1..fabcbff 100644
                          bool bZooming = false;
                          if ( pWeapon->IsSniper()  ) // Check if need to zoom or out.
                          {
-@@ -2327,12 +2658,22 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
+@@ -2327,12 +2659,22 @@ void CBot::PerformMove( TWaypointId iPreviousWaypoint, const Vector& vPrevOrigin
                              // Prefer secondary attack.
                              else if ( pWeapon->HasAmmoInClip(CWeapon::SECONDARY) &&
                                   pWeapon->IsDistanceSafe(m_fDistanceSqrToEnemy, CWeapon::SECONDARY) )
@@ -553,7 +557,7 @@ index 5dbd2d1..fabcbff 100644
                      }
                  }
 diff --git a/bot.h b/bot.h
-index 81c7c55..a1c0458 100644
+index 81c7c55..95ad680 100644
 --- a/bot.h
 +++ b/bot.h
 @@ -65,6 +65,18 @@ public: // Methods.
@@ -600,17 +604,26 @@ index 81c7c55..a1c0458 100644
  		return ( !pPlayer->IsProtected() ) &&
  		       ( CMod::iSpawnProtectionHealth == 0 || pPlayer->GetHealth() < CMod::iSpawnProtectionHealth ) &&
  			   ( team != CMod::iSpectatorTeam ) &&
-@@ -218,6 +237,9 @@ protected: // Mod dependend protected functions.
+@@ -218,6 +237,18 @@ protected: // Mod dependend protected functions.
      // Bot just picked up given item.
      virtual void PickItem( const CItem& cItem, TItemType iEntityType, TItemIndex iIndex );
  
 +    // Distance the bot must move in one second to be considered not stucked (mods with slowed players lower it).
 +    virtual float MinNonStuckSpeed() const { return CMod::fMinNonStuckSpeed; }
 +
++    /// Mods: true when the bot must not step aside / back off for a player in its way (a fire to cross).
++    virtual bool KeepGoingThrough() const { return false; }
++
++    /// Mods: true to step left rather than right for a player in the way (away from a fire).
++    virtual bool SideStepLeft() const { return false; }
++
++    /// Mods: true to follow a player in the way rather than step aside (it goes the same way).
++    virtual bool FollowRatherThanStep( const CPlayer* /*pOther*/ ) const { return false; }
++
  
  protected: // Methods.
      /// Say something in chat.
-@@ -258,6 +280,11 @@ protected: // Methods.
+@@ -258,6 +289,11 @@ protected: // Methods.
      // Update nearest objects, players, items and weapons.
      void UpdateWorld();
  
@@ -622,7 +635,7 @@ index 81c7c55..a1c0458 100644
      inline void CurrentEnemyNotVisible()
      {
          m_bEnemyAim = m_bEnemyOffSight = m_bAttackDuck = false;
-@@ -305,6 +332,15 @@ protected: // Methods.
+@@ -305,6 +341,15 @@ protected: // Methods.
      // Shoot current weapon.
      void WeaponShoot( int iSecondary = CWeapon::PRIMARY );
  
@@ -638,7 +651,7 @@ index 81c7c55..a1c0458 100644
      // Toggle zoom.
      void WeaponToggleZoom()
      {
-@@ -405,6 +441,17 @@ protected: // Members.
+@@ -405,6 +450,17 @@ protected: // Members.
  
      float m_fNextDrawNearObjectsTime;                              // Next time to draw near objects.
      float m_fInvalidWaypointEnd;                                   // Time when suicide because far away from waypoints.
@@ -656,7 +669,7 @@ index 81c7c55..a1c0458 100644
  
      good::pair<int, int> m_cAttackDuckRangeSqr;                    // Will duck if attacking & m_bFeatureAttackDuckEnabled & in range.
  
-@@ -481,6 +528,7 @@ protected: // Bot flags.
+@@ -481,6 +537,7 @@ protected: // Bot flags.
      bool m_bNeedJumpDuck:1;                                        // Will start ducking at m_fStartActionTime and hold duck until m_fEndActionTime.
  
      bool m_bDontBreakObjects:1;                                    // Set to true to not to break nearby objects.
@@ -1236,10 +1249,10 @@ index c77191c..d9f2b29 100644
  
 diff --git a/mods/sgtc2/bot_sgtc2.cpp b/mods/sgtc2/bot_sgtc2.cpp
 new file mode 100644
-index 0000000..d0098bb
+index 0000000..f9d0bfa
 --- /dev/null
 +++ b/mods/sgtc2/bot_sgtc2.cpp
-@@ -0,0 +1,329 @@
+@@ -0,0 +1,331 @@
 +#ifdef BOTRIX_SGTC2
 +
 +#include <stdio.h>
@@ -1356,6 +1369,8 @@ index 0000000..d0098bb
 +
 +//----------------------------------------------------------------------------------------------------------------
 +int sgtc2::iTauriSkillBonus = 0;
++float sgtc2::fObjectiveRoam = 0.0f;
++int sgtc2::iChase = 0;
 +
 +bool CBot_SGTC2::CheckJoin()
 +{
@@ -1571,10 +1586,10 @@ index 0000000..d0098bb
 +#endif // BOTRIX_SGTC2
 diff --git a/mods/sgtc2/bot_sgtc2.h b/mods/sgtc2/bot_sgtc2.h
 new file mode 100644
-index 0000000..1c60d93
+index 0000000..7070ff0
 --- /dev/null
 +++ b/mods/sgtc2/bot_sgtc2.h
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,82 @@
 +#ifdef BOTRIX_SGTC2
 +
 +#ifndef __BOTRIX_BOT_SGTC2_H__
@@ -1586,6 +1601,12 @@ index 0000000..1c60d93
 +{
 +    /// Tau'ri bots get this many intelligence levels more (console: sgtc2_tauri_skill_bonus, 0 by default).
 +    extern int iTauriSkillBonus;
++    /// Objective mode: the defenders roaming on the objective's island stay within this distance of the objective
++    /// (<prefix>_objroam, for the current map, 0 = anywhere on the island).
++    extern float fObjectiveRoam;
++    /// Objective mode: percent of the defenders off the objective's island that go after attackers there,
++    /// through the stargate (<prefix>_chase, for the current map, 0 = off).
++    extern int iChase;
 +}
 +
 +
@@ -1653,10 +1674,10 @@ index 0000000..1c60d93
 +#endif // BOTRIX_SGTC2
 diff --git a/mods/sgtc2/hooks_sgtc2.cpp b/mods/sgtc2/hooks_sgtc2.cpp
 new file mode 100644
-index 0000000..de08531
+index 0000000..5cdd7d0
 --- /dev/null
 +++ b/mods/sgtc2/hooks_sgtc2.cpp
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,229 @@
 +// Round end log for StargateTC 2's server.dll (closed source, image base 0x22000000).
 +//
 +// The game rules function "team X wins the round" (0x22346bb0, thiscall, one argument: the team) shows the win
@@ -1667,6 +1688,7 @@ index 0000000..de08531
 +#include <string.h>
 +
 +#include "server_plugin.h"
++#include "mods/sgtc2/stargates_sgtc2.h"
 +
 +#include "tier0/dbg.h"
 +
@@ -1715,6 +1737,7 @@ index 0000000..de08531
 +        Msg( "[Botrix] %s: round won by %s (team %d): %s (server.dll %08x).\n",
 +             CBotrixPlugin::instance->sMapName.c_str(),
 +             iTeam == 3 ? "the Tau'ri" : ( iTeam == 2 ? "the Goa'uld" : "?" ), iTeam, szReason, iVA );
++        sgtc2::CStargates::LogRoundEnd( iTeam );
 +    }
 +
 +    __declspec(naked) void TeamWinHook()
@@ -1785,6 +1808,7 @@ index 0000000..de08531
 +#include <sys/mman.h>
 +
 +#include "server_plugin.h"
++#include "mods/sgtc2/stargates_sgtc2.h"
 +#include "mods/sgtls/sgtls_util.h"
 +
 +#include "tier0/dbg.h"
@@ -1827,6 +1851,7 @@ index 0000000..de08531
 +             CBotrixPlugin::instance->sMapName.c_str(),
 +             iTeam == 3 ? "the Tau'ri" : ( iTeam == 2 ? "the Goa'uld" : "?" ), iTeam, szReason, szFunction,
 +             cInfo.dli_saddr ? (unsigned int)( pReturn - (char*)cInfo.dli_saddr ) : 0 );
++        sgtc2::CStargates::LogRoundEnd( iTeam );
 +        ( (TWinScreen)m_pTrampoline )( pThis, iTeam );
 +    }
 +
@@ -1966,10 +1991,10 @@ index 0000000..1c33f99
 +#endif // BOTRIX_SGTC2
 diff --git a/mods/sgtc2/stargates_sgtc2.cpp b/mods/sgtc2/stargates_sgtc2.cpp
 new file mode 100644
-index 0000000..231732b
+index 0000000..71dee60
 --- /dev/null
 +++ b/mods/sgtc2/stargates_sgtc2.cpp
-@@ -0,0 +1,960 @@
+@@ -0,0 +1,1055 @@
 +#ifdef BOTRIX_SGTC2
 +
 +#include <math.h>
@@ -1985,6 +2010,7 @@ index 0000000..231732b
 +#include "server_plugin.h"
 +#include "waypoint.h"
 +#include "mods/sgtc2/stargates_sgtc2.h"
++#include "mods/sgtc2/bot_sgtc2.h"
 +#include "mods/sgtls/sgtls_map.h"
 +#include "mods/sgtls/sgtls_util.h"
 +
@@ -2089,6 +2115,11 @@ index 0000000..231732b
 +    float m_fNextEntities = 0.0f;
 +    float m_fLastUpdate = -1.0f;
 +    int m_iStamp = 0;
++    // Objective mode, <prefix>_chase: defenders going through the stargate after attackers that reached the
++    // objective's island (they may dial), and whether attackers are there (checked every second).
++    std::vector<edict_t*> m_aChasers;
++    bool m_bAttackersOnGoal = false;
++    float m_fNextGoalCheck = 0.0f;
 +    int m_iChaseStamp = 0;                     // Every fChaseInterval while the artefact is carried.
 +
 +    edict_t* m_pDialer = NULL;                 // Bot that dials, one at a time.
@@ -2112,12 +2143,14 @@ index 0000000..231732b
 +    }
 +
 +    // A random waypoint of an island (a few tries), EWaypointIdInvalid if none found.
-+    TWaypointId RandomOnIsland( int iIsland )
++    // A random waypoint of the island; with pNear, within fRadius of it.
++    TWaypointId RandomOnIsland( int iIsland, const Vector* pNear = NULL, float fRadius = 0.0f )
 +    {
-+        for ( int i = 0; i < 32 && !m_aIsland.empty(); ++i )
++        for ( int i = 0; i < ( pNear ? 256 : 32 ) && !m_aIsland.empty(); ++i )
 +        {
 +            TWaypointId w = rand() % (int)m_aIsland.size();
-+            if ( m_aIsland[w] == iIsland )
++            if ( m_aIsland[w] == iIsland &&
++                 ( !pNear || CWaypoints::Get( w ).vOrigin.DistToSqr( *pNear ) < fRadius * fRadius ) )
 +                return w;
 +        }
 +        return EWaypointIdInvalid;
@@ -2545,11 +2578,39 @@ index 0000000..231732b
 +    }
 +
 +    // Island a bot must reach with the stargates (and may dial for), -1 if none.
++    bool IsChaser( edict_t* pBot )
++    {
++        return std::find( m_aChasers.begin(), m_aChasers.end(), pBot ) != m_aChasers.end();
++    }
++
++    void SetChaser( edict_t* pBot, bool bChaser )
++    {
++        std::vector<edict_t*>::iterator it = std::find( m_aChasers.begin(), m_aChasers.end(), pBot );
++        if ( bChaser && it == m_aChasers.end() )
++            m_aChasers.push_back( pBot );
++        else if ( !bChaser && it != m_aChasers.end() )
++            m_aChasers.erase( it );
++    }
++
++    // A living player of team iTeam on island iIsland.
++    bool TeamOnIsland( int iTeam, int iIsland )
++    {
++        for ( int p = 0; p < CPlayers::Size(); ++p )
++        {
++            CPlayer* pPlayer = CPlayers::Get( p );
++            if ( pPlayer && pPlayer->IsAlive() && pPlayer->GetTeam() == iTeam && Island( pPlayer->iCurrentWaypoint ) == iIsland )
++                return true;
++        }
++        return false;
++    }
++
 +    int TravelIsland( edict_t* pBot, TTeam iTeam )
 +    {
 +        if ( m_iMode == sgtc2::EModeObjective )
 +        {
 +            const CGoal* pGoal = GoalOf( iTeam, false );
++            if ( !pGoal && IsChaser( pBot ) )
++                pGoal = GoalOf( iTeam, true );
 +            return pGoal ? pGoal->iIsland : -1;
 +        }
 +        if ( m_iMode == sgtc2::EModeArtefact && m_pCarrier == pBot )
@@ -2686,6 +2747,22 @@ index 0000000..231732b
 +
 +int sgtc2::CStargates::StateStamp( bool bFollower )
 +{
++    // Chasing: attackers arriving on the objective's island (or gone from it) make the defenders choose again.
++    if ( sgtc2::iChase > 0 && m_iMode == EModeObjective && CBotrixPlugin::fTime >= m_fNextGoalCheck )
++    {
++        m_fNextGoalCheck = CBotrixPlugin::fTime + 1.0f;
++        bool bOn = false;
++        for ( int t = 2; t <= 3 && !bOn; ++t )
++        {
++            const CGoal* pGoal = GoalOf( t, false );
++            bOn = pGoal && TeamOnIsland( t, pGoal->iIsland );
++        }
++        if ( bOn != m_bAttackersOnGoal )
++        {
++            m_bAttackersOnGoal = bOn;
++            ++m_iStamp;
++        }
++    }
 +    return bFollower ? m_iStamp + ( m_iChaseStamp << 16 ) : m_iStamp;
 +}
 +
@@ -2743,13 +2820,23 @@ index 0000000..231732b
 +            return EWaypointIdInvalid;
 +        if ( pGoal->iIsland == iHere )
 +        {
++            SetChaser( pBot, false );
 +            int iRoll = rand() % 4;
-+            TWaypointId w = ( iRoll < 2 ) ? RandomOnIsland( iHere ) : EWaypointIdInvalid;
++            // <prefix>_objroam (per map, 0 = the whole island): those roam within that distance of the objective.
++            TWaypointId w = ( iRoll < 2 ) ? RandomOnIsland( iHere, sgtc2::fObjectiveRoam > 0.0f ? &pGoal->vCenter : NULL,
++                                                            sgtc2::fObjectiveRoam ) : EWaypointIdInvalid;
 +            return CWaypoint::IsValid( w ) ? w : Random( ( iRoll & 1 ) ? pGoal->aInside : pGoal->aNear );
 +        }
 +        CRoute r;
 +        if ( !FindRoute( iHere, pGoal->iIsland, r ) )
 +            return EWaypointIdInvalid;
++        // <prefix>_chase (per map, percent, 0 = off): attackers reached the objective's island, so a defender goes
++        // after them through the stargate, dialing it if needed. On sg2_temple no defender was on that island in
++        // any of the 58 rounds the Tau'ri won by reaching the objective (2026-11-04): only attackers used gates.
++        bool bChase = sgtc2::iChase > 0 && TeamOnIsland( pGoal->iTeam, pGoal->iIsland ) && ( rand() % 100 ) < sgtc2::iChase;
++        SetChaser( pBot, bChase );
++        if ( bChase )
++            return TravelWaypoint( pBot, iHere, pGoal->iIsland );
 +        // 30% around the DHD, 20% around the gate, the others roam (hunt the attackers): 70% at the DHD and the
 +        // gate camped there (sg2_temple, user's test 2026-10-27).
 +        const CGate& cSource = m_aGates[r.iSource];
@@ -2814,7 +2901,7 @@ index 0000000..231732b
 +        if ( pGoal->iIsland == iHere )
 +            return ( bAttacker && WalkInto( vHead, pGoal->vMins, pGoal->vMaxs, fWalkIntoGoalDistance, vTarget ) )
 +                   ? EGateActionWalk : EGateActionNone;
-+        return TravelAction( pBot, iHere, pGoal->iIsland, vHead, bAttacker, iDestination, vTarget );
++        return TravelAction( pBot, iHere, pGoal->iIsland, vHead, bAttacker || IsChaser( pBot ), iDestination, vTarget );
 +    }
 +
 +    if ( m_iMode == EModeArtefact && IsArtefact( m_pArtefact ) )
@@ -2870,6 +2957,39 @@ index 0000000..231732b
 +    edict_t* pButton = m_aDhds[r.iDhd].aButtons[iButton];
 +    if ( !pButton || pButton->IsFree() || !sgtls::UseEntity( pButton, pBot ) )
 +        m_fNextEntities = 0.0f; // Find the entities again.
++}
++
++
++void sgtc2::CStargates::LogRoundEnd( int iWinner )
++{
++    Refresh();
++    if ( m_iMode != EModeObjective )
++        return;
++    int iAttackers = -1;
++    const CGoal* pGoal = NULL;
++    for ( int t = 2; t <= 3 && !pGoal; ++t )
++        if ( ( pGoal = GoalOf( t, false ) ) != NULL )
++            iAttackers = t;
++    if ( !pGoal )
++        return;
++    std::string aList[2];
++    int aAlive[2] = { 0, 0 }, aOnIsland[2] = { 0, 0 };
++    for ( int p = 0; p < CPlayers::Size(); ++p )
++    {
++        CPlayer* pPlayer = CPlayers::Get( p );
++        if ( !pPlayer || !pPlayer->IsAlive() || pPlayer->GetTeam() < 2 )
++            continue;
++        int k = ( pPlayer->GetTeam() == iAttackers ) ? 0 : 1;
++        bool bOn = Island( pPlayer->iCurrentWaypoint ) == pGoal->iIsland;
++        ++aAlive[k];
++        aOnIsland[k] += bOn;
++        char sz[48];
++        snprintf( sz, sizeof( sz ), " %.0f%s", pPlayer->GetHead().DistTo( pGoal->vCenter ), bOn ? "" : "(off)" );
++        aList[k] += sz;
++    }
++    Msg( "[Botrix] %s: round end diag: winner %d; attackers (team %d) alive %d, on the objective's island %d:%s; "
++         "defenders alive %d, on the island %d:%s\n", CBotrixPlugin::instance->sMapName.c_str(), iWinner, iAttackers,
++         aAlive[0], aOnIsland[0], aList[0].c_str(), aAlive[1], aOnIsland[1], aList[1].c_str() );
 +}
 +
 +
@@ -2932,10 +3052,10 @@ index 0000000..231732b
 +#endif // BOTRIX_SGTC2
 diff --git a/mods/sgtc2/stargates_sgtc2.h b/mods/sgtc2/stargates_sgtc2.h
 new file mode 100644
-index 0000000..8ed1da1
+index 0000000..bf78c63
 --- /dev/null
 +++ b/mods/sgtc2/stargates_sgtc2.h
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,89 @@
 +#ifndef __BOTRIX_STARGATES_SGTC2_H__
 +#define __BOTRIX_STARGATES_SGTC2_H__
 +
@@ -3013,6 +3133,10 @@ index 0000000..8ed1da1
 +
 +        /// Print the map knowledge and the gate states (sgtc2_objectives command).
 +        static void Print();
++
++        /// Objective mode, at a round end (tests): each living player's distance to the attackers' objective and
++        /// whether it is on the objective's island.
++        static void LogRoundEnd( int iWinner );
 +    };
 +
 +    /// Round end log in server.dll (hooks_sgtc2.cpp).
@@ -3023,10 +3147,10 @@ index 0000000..8ed1da1
 +#endif // __BOTRIX_STARGATES_SGTC2_H__
 diff --git a/mods/sgtls/bot_sgtls.cpp b/mods/sgtls/bot_sgtls.cpp
 new file mode 100644
-index 0000000..fd1e235
+index 0000000..4544332
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.cpp
-@@ -0,0 +1,740 @@
+@@ -0,0 +1,789 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#include <stdio.h>
@@ -3039,6 +3163,7 @@ index 0000000..fd1e235
 +
 +#include "mods/sgtls/bot_sgtls.h"
 +#include "mods/sgtls/objectives_sgtls.h"
++#include "mods/sgtls/sgtls_map.h"
 +#include "mods/sgtls/sgtls_util.h"
 +
 +#include "iplayerinfo.h"
@@ -3409,15 +3534,61 @@ index 0000000..fd1e235
 +
 +
 +//----------------------------------------------------------------------------------------------------------------
++bool CBot_SGTLS::KeepGoingThrough() const
++{
++    // tls_lockdown's fire corridor is a lane one player and a half wide with the flames along it: a bot behind a
++    // teammate stepped aside (as for a player coming the other way) into the wall corner and burned there; 64 % of
++    // the bots seen stuck in the fire had a teammate within 80 units (2026-11-04).
++    // Measured: without the side step two bots face to face in the lane stayed there and burned (603 Tau'ri fire
++    // deaths instead of 60 in 8 servers x 40 min): only in mode 1, for tests.
++    return sgtls::iFireCross == 1 && m_bAlive && sgtls::InFire( m_vHead );
++}
++
++
++bool CBot_SGTLS::SideStepLeft() const
++{
++    // Botrix steps right for a player in the way. tls_lockdown's fire lane runs north with the flames on its west
++    // side: southbound bots stepped into them (<prefix>_firecross 3: away from the nearest fire in reach).
++    Vector2D vFire;
++    if ( ( sgtls::iFireCross != 3 && sgtls::iFireCross != 4 ) || !m_bAlive || !sgtls::FireInReach( m_vHead, vFire ) )
++        return false;
++    Vector2D vForward = ( m_vDestination - m_vHead ).AsVector2D();
++    Vector2D vRight( vForward.y, -vForward.x );
++    return vRight.Dot( vFire - m_vHead.AsVector2D() ) > 0.0f;
++}
++
++
++bool CBot_SGTLS::FollowRatherThanStep( const CPlayer* pOther ) const
++{
++    // In the fire lane a bot behind a teammate going the same way stepped aside as for one coming the other way
++    // (64 % of the bots seen stuck in the fire had a teammate within 80 units): follow it instead.
++    // Mode 4 only: with it the followers piled up at the lane's north end (waypoint 444), 84 watchdog suicides
++    // instead of 38 in 12 servers x 40 min, for 65 fewer fire deaths.
++    return sgtls::iFireCross == 4 && m_bAlive && pOther && pOther->GetTeam() == GetTeam() &&
++           CWaypoint::IsValid( iNextWaypoint ) && pOther->iNextWaypoint == iNextWaypoint && sgtls::InFire( m_vHead );
++}
++
++
 +bool CBot_SGTLS::ShouldEngage()
 +{
++    // In a fire (<prefix>_firecross 1 or 2): shoot while walking on, don't stop there to fight.
++    if ( ( sgtls::iFireCross == 1 || sgtls::iFireCross == 2 ) && m_bAlive && sgtls::InFire( m_vHead ) )
++        return false;
 +    // Stopping (and chasing) for every enemy seen across tls_abydos's valley, 2000+ units away, stalled the attack
 +    // on area 1 for 10 minutes. On the way to the area it attacks, a bot stops to fight only the enemies within 500
 +    // units, and anything once within 800 units of the area (to clear it); it shoots at the others while walking.
 +    // With 1000 units, tls_erebus's attackers stopped in the open below the first checkpoint, where the defenders'
 +    // staffs outranged their P90s, and never reached it (8 kills to 48).
 +    if ( !sgtls::CObjectives::IsAttacking( GetTeam(), m_pSpot ) )
++    {
++        // A defender farther than <prefix>_defreach from the spot it goes to defend (per map, 0 = off) does the same:
++        // on tls_abydos the Tau'ri stopped to fight Goa'uld seen across the valley, 1500 units from the pyramid,
++        // and half of the attempts on the pyramid started with no defender within 1500 units (2026-11-04).
++        if ( sgtls::fDefenderReach > 0.0f && m_pSpot && sgtls::CObjectives::IsDefending( GetTeam(), m_pSpot ) &&
++             sgtls::CObjectives::DistanceToSpot( m_pSpot, m_vHead ) > sgtls::fDefenderReach )
++            return m_fDistanceSqrToEnemy < 500.0f * 500.0f;
 +        return true;
++    }
 +    return m_fDistanceSqrToEnemy < 500.0f * 500.0f || sgtls::CObjectives::DistanceToSpot( m_pSpot, m_vHead ) < 800.0f;
 +}
 +
@@ -3538,7 +3709,7 @@ index 0000000..fd1e235
 +    if ( m_iStageSeen != sgtls::CObjectives::StageChanges() )
 +    {
 +        m_iStageSeen = sgtls::CObjectives::StageChanges();
-+        if ( m_bAlive && m_iCurrentTask == EBotTaskFindEnemy )
++        if ( sgtls::bStageRepick && m_bAlive && m_iCurrentTask == EBotTaskFindEnemy )
 +        {
 +            m_iGuardWaypoint = EWaypointIdInvalid;
 +            m_fGuardEnd = 0.0f;
@@ -3558,6 +3729,8 @@ index 0000000..fd1e235
 +    if ( m_bAlive && !m_pCurrentEnemy && Guard() )
 +        return;
 +    CBot_HL2DM::Think();
++    if ( m_bNeedMove && ( sgtls::iFireCross == 1 || sgtls::iFireCross == 2 ) && sgtls::InFire( m_vHead ) )
++        m_bNeedSprint = true; // Through the fire as fast as possible.
 +    // After the HL2DM think, which aims along the path: the window first.
 +    m_bBreakingGlass = m_bAlive && BreakGlass();
 +    JumpAtStep();
@@ -3769,10 +3942,10 @@ index 0000000..fd1e235
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/bot_sgtls.h b/mods/sgtls/bot_sgtls.h
 new file mode 100644
-index 0000000..d550a10
+index 0000000..dacb55f
 --- /dev/null
 +++ b/mods/sgtls/bot_sgtls.h
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,109 @@
 +#ifdef BOTRIX_SGTLS
 +
 +#ifndef __BOTRIX_BOT_SGTLS_H__
@@ -3808,6 +3981,9 @@ index 0000000..d550a10
 +
 +    /// Not for far enemies on the way to an objective the bot attacks: it shoots while walking.
 +    virtual bool ShouldEngage();
++    virtual bool KeepGoingThrough() const;
++    virtual bool SideStepLeft() const;
++    virtual bool FollowRatherThanStep( const CPlayer* pOther ) const;
 +
 +    /// Hold +use on the button of a hold-button objective when in range (and no enemy), else the HL2DM think.
 +    virtual void Think();
@@ -4183,10 +4359,10 @@ index 0000000..00d76c7
 +#endif // BOTRIX_SGTLS
 diff --git a/mods/sgtls/objectives_sgtls.cpp b/mods/sgtls/objectives_sgtls.cpp
 new file mode 100644
-index 0000000..acc1993
+index 0000000..b855000
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.cpp
-@@ -0,0 +1,818 @@
+@@ -0,0 +1,845 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
@@ -4803,7 +4979,7 @@ index 0000000..acc1993
 +    // Attackers go into the area / to the button. Defenders stand in an area half of the time (to block the
 +    // capture) and around it otherwise; at a button, which they can't block, at a guard spot 3 times in 4 (<prefix>_defend).
 +    bool bAttacker = ( Attackers( c ) == iTeam );
-+    bool bInside = bAttacker || c.aNear.empty() || ( c.bButton ? ( sgtls::iGuardInside > 0 && ( rand() % sgtls::iGuardInside ) == 0 ) : ( rand() & 1 ) != 0 );
++    bool bInside = bAttacker || c.aNear.empty() || ( c.bButton ? ( sgtls::iGuardInside > 0 && ( rand() % sgtls::iGuardInside ) == 0 ) : ( rand() % 100 ) < sgtls::iAreaInside );
 +    // A defender of a button watches the place under threat from a guard spot that sees it, or stands on that place
 +    // (not on another one: tls_lockdown's guards at the north side of the bomb desk were blind to the Tau'ri holding
 +    // it from the south, 2026-11-04).
@@ -4817,6 +4993,23 @@ index 0000000..acc1993
 +    const std::vector<TWaypointId>& aChoice = bInside ? c.aInside : c.aNear;
 +    if ( aChoice.empty() )
 +        return EWaypointIdInvalid;
++    // Buttons: only places a bot can come back from, when there are some: two of the three places of tls_lockdown's
++    // alternate iris control are in a pocket with no way in from the rest of the map, and the Tau'ri sent there
++    // never arrived (1 attempt in 40 on that control, 2026-11-04).
++    if ( c.bButton )
++    {
++        const std::vector<char>& aMain = MainPart();
++        int iReachable = 0;
++        for ( size_t i = 0; i < aChoice.size(); ++i )
++            iReachable += aMain[ aChoice[i] ];
++        if ( iReachable > 0 && iReachable < (int)aChoice.size() )
++        {
++            int k = rand() % iReachable;
++            for ( size_t i = 0; i < aChoice.size(); ++i )
++                if ( aMain[ aChoice[i] ] && k-- == 0 )
++                    return aChoice[i];
++        }
++    }
 +    return aChoice[ rand() % aChoice.size() ];
 +}
 +
@@ -4827,6 +5020,16 @@ index 0000000..acc1993
 +    for ( size_t a = 0; a < m_aSpots.size() && pSpot; ++a )
 +        if ( m_aSpots[a].pEdict == pSpot )
 +            return IsActive( m_aSpots[a] ) && Attackers( m_aSpots[a] ) == iTeam;
++    return false;
++}
++
++
++bool sgtls::CObjectives::IsDefending( TTeam iTeam, edict_t* pSpot )
++{
++    Refresh();
++    for ( size_t a = 0; a < m_aSpots.size() && pSpot; ++a )
++        if ( m_aSpots[a].pEdict == pSpot )
++            return IsActive( m_aSpots[a] ) && Attackers( m_aSpots[a] ) != iTeam;
 +    return false;
 +}
 +
@@ -5007,10 +5210,10 @@ index 0000000..acc1993
 +}
 diff --git a/mods/sgtls/objectives_sgtls.h b/mods/sgtls/objectives_sgtls.h
 new file mode 100644
-index 0000000..2c5e4a8
+index 0000000..348afde
 --- /dev/null
 +++ b/mods/sgtls/objectives_sgtls.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,78 @@
 +#ifndef __BOTRIX_OBJECTIVES_SGTLS_H__
 +#define __BOTRIX_OBJECTIVES_SGTLS_H__
 +
@@ -5046,6 +5249,9 @@ index 0000000..2c5e4a8
 +
 +        /// True if pSpot is an active spot that iTeam attacks.
 +        static bool IsAttacking( TTeam iTeam, edict_t* pSpot );
++
++        /// True if pSpot is an active spot that iTeam defends.
++        static bool IsDefending( TTeam iTeam, edict_t* pSpot );
 +
 +        /// True if pSpot is the button of an active hold-button objective that iTeam defends. vButton receives its
 +        /// center: what a defender at a guard spot watches.
@@ -5277,10 +5483,10 @@ index 0000000..99a2384
 +#endif
 diff --git a/mods/sgtls/sgtls_map.cpp b/mods/sgtls/sgtls_map.cpp
 new file mode 100644
-index 0000000..395a2c5
+index 0000000..eee659e
 --- /dev/null
 +++ b/mods/sgtls/sgtls_map.cpp
-@@ -0,0 +1,1306 @@
+@@ -0,0 +1,1350 @@
 +#include <math.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -5712,6 +5918,46 @@ index 0000000..395a2c5
 +}
 +
 +
++namespace
++{
++    struct CFireReach { Vector2D vCenter; float fMinZ, fMaxZ, fReach; };
++    std::vector<CFireReach> m_aFireReach;
++    std::string m_sFireMap;
++}
++
++int sgtls::iFireCross = 0;
++
++bool sgtls::InFire( const Vector& vEye )
++{
++    if ( m_sFireMap != CBotrixPlugin::instance->sMapName.c_str() )
++        return false;
++    for ( size_t k = 0; k < m_aFireReach.size(); ++k )
++    {
++        const CFireReach& f = m_aFireReach[k];
++        if ( vEye.z >= f.fMinZ && vEye.z <= f.fMaxZ && ( vEye.AsVector2D() - f.vCenter ).LengthSqr() < f.fReach * f.fReach )
++            return true;
++    }
++    return false;
++}
++
++bool sgtls::FireInReach( const Vector& vEye, Vector2D& vFire )
++{
++    if ( m_sFireMap != CBotrixPlugin::instance->sMapName.c_str() )
++        return false;
++    float fBest = 1e18f;
++    for ( size_t k = 0; k < m_aFireReach.size(); ++k )
++    {
++        const CFireReach& f = m_aFireReach[k];
++        float fDist = ( vEye.AsVector2D() - f.vCenter ).LengthSqr();
++        if ( vEye.z >= f.fMinZ && vEye.z <= f.fMaxZ && fDist < f.fReach * f.fReach && fDist < fBest )
++        {
++            fBest = fDist;
++            vFire = f.vCenter;
++        }
++    }
++    return fBest < 1e18f;
++}
++
 +int sgtls::AvoidFires()
 +{
 +    // env_fire on from the start with infinite fuel (spawnflags 1 + 4) burns for the whole map: tls_lockdown has
@@ -5723,6 +5969,8 @@ index 0000000..395a2c5
 +    float fEye = CMod::GetVar( EModVarPlayerEye );
 +    good::vector<TWaypointId> aTargets;
 +    int iPaths = 0;
++    m_aFireReach.clear();
++    m_sFireMap = CBotrixPlugin::instance->sMapName.c_str();
 +    for ( size_t i = 0; i < aEnts.size(); ++i )
 +    {
 +        const CBspEntity& e = aEnts[i];
@@ -5731,6 +5979,8 @@ index 0000000..395a2c5
 +        float fSize = atof( e.Get( "firesize", "64" ) );
 +        float fReach = fSize * 0.5f + 24.0f;
 +        Vector2D vFire = e.vOrigin.AsVector2D();
++        CFireReach r = { vFire, e.vOrigin.z, e.vOrigin.z + fSize + fEye, fReach };
++        m_aFireReach.push_back( r );
 +        for ( TWaypointId w = 0; w < CWaypoints::Size(); ++w )
 +        {
 +            const Vector& a = CWaypoints::Get( w ).vOrigin;
@@ -6589,10 +6839,10 @@ index 0000000..395a2c5
 +}
 diff --git a/mods/sgtls/sgtls_map.h b/mods/sgtls/sgtls_map.h
 new file mode 100644
-index 0000000..263c4ca
+index 0000000..6dd7473
 --- /dev/null
 +++ b/mods/sgtls/sgtls_map.h
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,76 @@
 +#ifndef __BOTRIX_SGTLS_MAP_H__
 +#define __BOTRIX_SGTLS_MAP_H__
 +
@@ -6646,6 +6896,15 @@ index 0000000..263c4ca
 +    /// count.
 +    int AvoidFires();
 +
++    /// True if a player whose eye is at vEye is within reach of one of those fires (as AvoidFires counts it), on the
++    /// current map. iFireCross (<prefix>_firecross): 0 off (default), 1 bots there don't stop to fight, sprint and
++    /// don't step aside for other players, 2 the same but they still step aside (1 and 2 burnt 10 times more bots),
++    /// 3 they step aside away from the fire, 4 the same and they follow a teammate going the same way instead.
++    bool InFire( const Vector& vEye );
++    /// The nearest of those fires whose reach vEye is in: false if none.
++    bool FireInReach( const Vector& vEye, Vector2D& vFire );
++    extern int iFireCross;
++
 +    /// True if a waypoint (eye level) would be in a deadly volume: killbox teleporter, enabled trigger_hurt.
 +    /// Installed as CWaypoints::pfnAnalyzeForbidden.
 +    bool IsForbidden( const Vector& vEye );
@@ -6662,10 +6921,10 @@ index 0000000..263c4ca
 +#endif // __BOTRIX_SGTLS_MAP_H__
 diff --git a/mods/sgtls/sgtls_util.cpp b/mods/sgtls/sgtls_util.cpp
 new file mode 100644
-index 0000000..29b65b3
+index 0000000..c7ce64e
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.cpp
-@@ -0,0 +1,1380 @@
+@@ -0,0 +1,1469 @@
 +#include <string.h>
 +#include <map>
 +#include <string>
@@ -7227,6 +7486,25 @@ index 0000000..29b65b3
 +            sgtc2::iTauriSkillBonus = atoi( args.Arg( 1 ) );
 +        Msg( "Tau'ri bots skill bonus: %d intelligence levels.\n", sgtc2::iTauriSkillBonus );
 +    }
++
++    // sgtc2_objroam [units] : objective mode, the defenders roaming on the objective's island stay within this
++    // distance of it (this map; 0 = anywhere on the island, the default at the next map).
++    // sgtc2_chase [percent] : objective mode, share of the defenders off the objective's island that go after
++    // attackers there through the stargate (this map; 0 = off, the default at the next map).
++    void ChaseCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtc2::iChase = MAX2( 0, MIN2( 100, atoi( args.Arg( 1 ) ) ) );
++        Msg( "Defenders chasing attackers onto the objective's island: %d %%\n", sgtc2::iChase );
++    }
++
++    void ObjRoamCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtc2::fObjectiveRoam = MAX2( 0.0f, (float)atof( args.Arg( 1 ) ) );
++        Msg( "Defenders roaming on the objective's island: within %.0f units of it%s\n", sgtc2::fObjectiveRoam,
++             sgtc2::fObjectiveRoam > 0.0f ? "" : " (anywhere)" );
++    }
 +#endif
 +
 +    // <prefix>_mem <entindex> <hex offset> [dwords] : dump the memory of an entity (closed-source fields).
@@ -7311,6 +7589,42 @@ index 0000000..29b65b3
 +             sgtls::iGuardInside, sgtls::iGuardInside == 0 ? " (never)" : "" );
 +    }
 +
++    // <prefix>_stagerepick [0|1] : roaming bots pick a new destination when the active objectives change (this map;
++    // 1 = on, the default at the next map).
++    void StageRepickCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::bStageRepick = atoi( args.Arg( 1 ) ) != 0;
++        Msg( "Roaming bots pick a new destination when the objectives change: %s\n", sgtls::bStageRepick ? "on" : "off" );
++    }
++
++    // <prefix>_defreach [units] : defenders farther than this from their spot fight only close enemies on the way
++    // (this map; 0 = off, the default at the next map).
++    void DefReachCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::fDefenderReach = MAX2( 0.0f, (float)atof( args.Arg( 1 ) ) );
++        Msg( "Defenders on their way, beyond %.0f units from their spot, fight only within 500 units%s\n", sgtls::fDefenderReach,
++             sgtls::fDefenderReach > 0.0f ? "" : " (off)" );
++    }
++
++    // <prefix>_areainside [percent] : share of a capture area's defenders that stand inside it (this map; 50 at the
++    // next map). With the game's strengths (1.5 per defender against 1 per attacker on tls_abydos) it takes two
++    // defenders inside to stop one attacker.
++    void AreaInsideCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::iAreaInside = MAX2( 0, MIN2( 100, atoi( args.Arg( 1 ) ) ) );
++        Msg( "Capture area defenders inside the area: %d %%\n", sgtls::iAreaInside );
++    }
++
++    void FireCrossCommand( const CCommand& args )
++    {
++        if ( args.ArgC() > 1 )
++            sgtls::iFireCross = atoi( args.Arg( 1 ) );
++        Msg( "Bots in fires burning for good: %d (0 as usual, 1 no stop / sprint / no side step, 2 no stop / sprint, 3 step away from the fire, 4 the same and follow)\n", sgtls::iFireCross );
++    }
++
 +    void CapDiagCommand( const CCommand& args )
 +    {
 +        if ( args.ArgC() > 1 )
@@ -7322,6 +7636,7 @@ index 0000000..29b65b3
 +    struct CSavedWeapon
 +    {
 +        float fShotTime, fMinDistanceSqr, fMaxDistanceSqr;
++        TWeaponType iType;
 +    };
 +    std::map<int, CSavedWeapon> aSavedWeapons;
 +
@@ -7348,7 +7663,7 @@ index 0000000..29b65b3
 +            return;
 +        }
 +        CWeapon* w = const_cast<CWeapon*>( CWeapons::Get( iId )->GetBaseWeapon() );
-+        CSavedWeapon cOld = { w->fShotTime[0], w->fMinDistanceSqr[0], w->fMaxDistanceSqr[0] };
++        CSavedWeapon cOld = { w->fShotTime[0], w->fMinDistanceSqr[0], w->fMaxDistanceSqr[0], w->iType };
 +        for ( int i = 2; i < args.ArgC(); )
 +        {
 +            if ( strcmp( args.Arg( i ), "delay" ) == 0 && i + 1 < args.ArgC() )
@@ -7363,16 +7678,24 @@ index 0000000..29b65b3
 +                w->fMaxDistanceSqr[0] = iMax ? SQR( (float)iMax ) : (float)CUtil::iMaxMapSizeSqr;
 +                i += 3;
 +            }
++            else if ( strcmp( args.Arg( i ), "type" ) == 0 && i + 1 < args.ArgC() &&
++                      ( strcmp( args.Arg( i + 1 ), "pistol" ) == 0 || strcmp( args.Arg( i + 1 ), "rifle" ) == 0 ) )
++            {
++                // "rifle": the bot holds the trigger for the delay and the game fires at its own rate; "pistol": one
++                // press per delay (StargateTC 2's sniper: its delay changed nothing as a rifle, 2026-11-04).
++                w->iType = strcmp( args.Arg( i + 1 ), "pistol" ) == 0 ? EWeaponPistol : EWeaponRifle;
++                i += 2;
++            }
 +            else
 +            {
-+                Msg( "Usage: <weapon> [delay <ms>] [range <min> <max>]\n" );
++                Msg( "Usage: <weapon> [delay <ms>] [range <min> <max>] [type pistol|rifle]\n" );
 +                return;
 +            }
 +        }
 +        if ( !aSavedWeapons.count( iId ) )
 +            aSavedWeapons[iId] = cOld;
-+        Msg( "%s on this map: delay %.0f ms, range %.0f %.0f\n", args.Arg( 1 ), w->fShotTime[0] * 1000.0f,
-+             sqrtf( w->fMinDistanceSqr[0] ), sqrtf( w->fMaxDistanceSqr[0] ) );
++        Msg( "%s on this map: delay %.0f ms, range %.0f %.0f, %s\n", args.Arg( 1 ), w->fShotTime[0] * 1000.0f,
++             sqrtf( w->fMinDistanceSqr[0] ), sqrtf( w->fMaxDistanceSqr[0] ), w->iType == EWeaponPistol ? "pistol" : w->iType == EWeaponRifle ? "rifle" : "other type" );
 +    }
 +
 +    // <prefix>_tp <entindex> <waypoint> : put a bot on a waypoint, to test the way from there (tls_erebus's temple).
@@ -7648,6 +7971,9 @@ index 0000000..29b65b3
 +float sgtls::fGuardMin = 8.0f;
 +float sgtls::fGuardMax = 15.0f;
 +int sgtls::iGuardInside = 4;
++float sgtls::fDefenderReach = 0.0f;
++int sgtls::iAreaInside = 50;
++bool sgtls::bStageRepick = true;
 +bool sgtls::bCaptureDiag = false;
 +
 +void sgtls::LogCapture( CPlayer* pCapper, const char* szEvent )
@@ -7730,6 +8056,13 @@ index 0000000..29b65b3
 +    fGuardMin = 8.0f;
 +    fGuardMax = 15.0f;
 +    iGuardInside = 4;
++    fDefenderReach = 0.0f;
++#ifdef BOTRIX_SGTC2
++    sgtc2::fObjectiveRoam = 0.0f;
++    sgtc2::iChase = 0;
++#endif
++    iAreaInside = 50;
++    bStageRepick = true;
 +    for ( std::map<int, CSavedWeapon>::const_iterator it = aSavedWeapons.begin(); it != aSavedWeapons.end(); ++it )
 +    {
 +        if ( !CWeapons::IsValid( it->first ) )
@@ -7738,6 +8071,7 @@ index 0000000..29b65b3
 +        w->fShotTime[0] = it->second.fShotTime;
 +        w->fMinDistanceSqr[0] = it->second.fMinDistanceSqr;
 +        w->fMaxDistanceSqr[0] = it->second.fMaxDistanceSqr;
++        w->iType = it->second.iType;
 +    }
 +    aSavedWeapons.clear();
 +}
@@ -7994,9 +8328,17 @@ index 0000000..29b65b3
 +    SGTLS_DECLARE_NOARGS( UseCommand )
 +    ConCommand cUse( SGTLS_PREFIX "_use", SGTLS_COMMAND_CALLBACK( UseCommand ), "<entindex> <activator entindex>: call an entity's Use() (tests: doors, buttons)." );
 +    ConCommand cDefend( SGTLS_PREFIX "_defend", SGTLS_COMMAND_CALLBACK( DefendCommand ), "[guard min s] [guard max s] [1 in N at the button, 0 = never]: how bots defend a hold button, on this map." );
++    SGTLS_DECLARE_NOARGS( DefReachCommand )
++    ConCommand cDefReach( SGTLS_PREFIX "_defreach", SGTLS_COMMAND_CALLBACK( DefReachCommand ), "[units]: defenders farther than this from their spot fight only enemies within 500 units on the way, on this map (0 = off)." );
++    SGTLS_DECLARE_NOARGS( StageRepickCommand )
++    ConCommand cStageRepick( SGTLS_PREFIX "_stagerepick", SGTLS_COMMAND_CALLBACK( StageRepickCommand ), "[0|1]: roaming bots pick a new destination when the active objectives change, on this map (1 by default)." );
++    SGTLS_DECLARE_NOARGS( AreaInsideCommand )
++    ConCommand cAreaInside( SGTLS_PREFIX "_areainside", SGTLS_COMMAND_CALLBACK( AreaInsideCommand ), "[percent]: share of a capture area's defenders that stand inside it, on this map (50 by default)." );
++    SGTLS_DECLARE_NOARGS( FireCrossCommand )
++    ConCommand cFireCross( SGTLS_PREFIX "_firecross", SGTLS_COMMAND_CALLBACK( FireCrossCommand ), "[0-4]: bots in the fires burning for good: 0 as usual, 1 don't stop / sprint / don't step aside, 2 don't stop / sprint, 3 step aside away from the fire, 4 the same and follow teammates going the same way." );
 +    SGTLS_DECLARE_NOARGS( CapDiagCommand )
 +    ConCommand cCapDiag( SGTLS_PREFIX "_capdiag", SGTLS_COMMAND_CALLBACK( CapDiagCommand ), "[0|1]: log the defenders around each capture (tests)." );
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cMem, &cKullMax, &cMapWeapon, &cDefend, &cCapDiag, &cUse };
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cEquipIds, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cMem, &cKullMax, &cMapWeapon, &cDefend, &cCapDiag, &cUse, &cFireCross, &cDefReach, &cAreaInside, &cStageRepick };
 +#elif defined(BOTRIX_SGTC2)
 +    SGTLS_DECLARE_NOARGS( UseCommand )
 +    SGTLS_DECLARE_NOARGS( MemCommand )
@@ -8004,7 +8346,13 @@ index 0000000..29b65b3
 +    ConCommand cMem( SGTLS_PREFIX "_mem", SGTLS_COMMAND_CALLBACK( MemCommand ), "<entindex> <hex offset> [dwords]: dump entity memory." );
 +    SGTLS_DECLARE_NOARGS( SkillBonusCommand )
 +    ConCommand cSkill( SGTLS_PREFIX "_tauri_skill_bonus", SGTLS_COMMAND_CALLBACK( SkillBonusCommand ), "[n]: Tau'ri bots joining from now on get n intelligence levels more (0 = off)." );
-+    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cUse, &cMem, &cSkill };
++    SGTLS_DECLARE_NOARGS( MapWeaponCommand )
++    ConCommand cMapWeapon( SGTLS_PREFIX "_mapweapon", SGTLS_COMMAND_CALLBACK( MapWeaponCommand ), "<weapon> [delay <ms>] [range <min> <max>]: bots' use of a weapon on this map only." );
++    SGTLS_DECLARE_NOARGS( ChaseCommand )
++    ConCommand cChase( SGTLS_PREFIX "_chase", SGTLS_COMMAND_CALLBACK( ChaseCommand ), "[percent]: objective mode, defenders going after attackers that reached the objective's island, through the stargate, on this map (0 = off)." );
++    SGTLS_DECLARE_NOARGS( ObjRoamCommand )
++    ConCommand cObjRoam( SGTLS_PREFIX "_objroam", SGTLS_COMMAND_CALLBACK( ObjRoamCommand ), "[units]: objective mode, defenders roaming on the objective's island stay within this distance of it, on this map (0 = anywhere)." );
++    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit, &cUse, &cMem, &cSkill, &cMapWeapon, &cObjRoam, &cChase };
 +#else
 +    ConCommand* aCommands[] = { &cProps, &cDump, &cGet, &cTp, &cRecoil, &cKeepDist, &cCmd, &cWpGen, &cWpGrow, &cWpSave, &cObjectives, &cReach, &cSlope, &cSlopeScan, &cRegroup, &cVisAudit };
 +#endif
@@ -8048,10 +8396,10 @@ index 0000000..29b65b3
 +}
 diff --git a/mods/sgtls/sgtls_util.h b/mods/sgtls/sgtls_util.h
 new file mode 100644
-index 0000000..e776986
+index 0000000..ac5b039
 --- /dev/null
 +++ b/mods/sgtls/sgtls_util.h
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,115 @@
 +#ifndef __BOTRIX_SGTLS_UTIL_H__
 +#define __BOTRIX_SGTLS_UTIL_H__
 +
@@ -8135,6 +8483,15 @@ index 0000000..e776986
 +    /// button itself 1 time in iGuardInside (0 = never) instead (<prefix>_defend, for the current map).
 +    extern float fGuardMin, fGuardMax;
 +    extern int iGuardInside;
++    /// SGTLS: a defender farther than this from its spot fights only enemies within 500 units on the way
++    /// (<prefix>_defreach, for the current map, 0 = off).
++    extern float fDefenderReach;
++    /// SGTLS: share (percent) of a capture area's defenders that stand inside it rather than around it
++    /// (<prefix>_areainside, for the current map, 50 by default).
++    extern int iAreaInside;
++    /// SGTLS: roaming bots pick a new destination when the active objectives change (<prefix>_stagerepick, for the
++    /// current map, on by default; off = 1.0.1: they keep going where they were going).
++    extern bool bStageRepick;
 +    /// A guard time in fGuardMin..fGuardMax.
 +    inline float GuardTime() { return fGuardMin + ( fGuardMax - fGuardMin ) * ( rand() % 1001 ) / 1000.0f; }
 +
