@@ -22,7 +22,7 @@
 | `addons\botrix\config.ini` | bot settings: weapons, classes, equipment, skills |
 | `addons\botrix\waypoints\*.way` | the paths of the 3 maps |
 | `cfg\botrix_tls_abydos.cfg`, `botrix_tls_erebus.cfg`, `botrix_tls_lockdown.cfg` | bot settings for one map, run by the plugin once that map is loaded (back to the defaults at the next map) |
-| `materials\console\background01.vtf`, `background01_widescreen.vtf` | the menu backgrounds with "REDIAL V1.0.3" (release zip only; not with `-NoSplash`) |
+| `materials\console\background01.vtf`, `background01_widescreen.vtf` | the menu backgrounds with "REDIAL V1.0.4" (release zip only; not with `-NoSplash`) |
 
 A file that already exists and differs is first copied to `sgtls\redial-backup\` (same relative path). `redial-backup\installed.txt` lists every file installed: `A` added, `R` replaced, `C` cfg created.
 
